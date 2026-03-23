@@ -232,10 +232,10 @@ export class SensePlatformStack extends cdk.Stack {
 
     // -----------------------------------------
     // Frontend — S3 static website
-    // Cloudflare DNS points sense.donohue.ai here
+    // Cloudflare DNS points to this bucket
     // -----------------------------------------
     const frontendBucket = new s3.Bucket(this, "FrontendBucket", {
-      bucketName: "sense.donohue.ai",
+      bucketName: frontendDomain,
       websiteIndexDocument: "index.html",
       publicReadAccess: true,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ACLS,

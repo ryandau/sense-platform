@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <link id="favicon" rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='12' fill='%23555'/></svg>">
   <title>Sense Platform</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/cormorant-garamond@5/400.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/outfit@5/400.css">
@@ -17,6 +18,7 @@
       width: 100%; flex: 1;
       min-height: 520px;
       position: relative; overflow: hidden;
+      background: #0b0908;
     }
 
     /* Sky gradient — transitions on AQI change */
@@ -83,6 +85,8 @@
       background: rgba(255,255,255,.2); flex-shrink: 0;
       transition: background 1.5s;
     }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+    .pulse { animation: pulse 2s ease-in-out infinite; }
     .location-label {
       font-size: 10px; letter-spacing: .12em;
       text-transform: uppercase; color: rgba(255,255,255,.38);
@@ -199,10 +203,10 @@
   <div class="centre-block">
     <div class="centre-label">Air Quality Index</div>
     <div id="anum" class="aqi-number">&ndash;</div>
-    <div id="acat" class="aqi-category">Loading</div>
-    <div class="location-row">
+    <div id="acat" class="aqi-category pulse">Connecting</div>
+    <div class="location-row" id="loc-row" style="opacity:0;transition:opacity .6s ease">
       <div id="ldot" class="location-dot"></div>
-      <span id="location" class="location-label">Annerley &middot; Brisbane</span>
+      <span id="location" class="location-label"></span>
     </div>
 
     <div id="stats" class="stats-container">
@@ -217,7 +221,7 @@
   <div class="btn-bar-inner">
     <div class="btn-row">
       <button id="live-tab" class="btn btn-live">
-        <span id="live-dot" class="btn-dot" style="background:#ff5555"></span>Offline
+        <span id="live-dot" class="btn-dot pulse" style="background:#ffe08a"></span>Connecting
       </button>
       <span class="btn-divider"></span>
       <button data-s="good" class="btn">Good</button>
@@ -253,16 +257,32 @@ const STAT_FIELDS = [
 // AQI STATE DEFINITIONS
 // ═══════════════════════════════════════════
 const AQI_STATES = [
-  { max: 50,  key: 'good',      label: 'Good',                          dot: '#7ee8a2', sky: 'linear-gradient(180deg,#0d3d6e 0%,#1a6bb8 32%,#3a9ad4 66%,#68bce6 88%,#90d4f0 100%)', specks: { n: 20,  r: 0.5,  al: 0.50 }, blobs: { n: 0,  r: 0,  al: 0     } },
-  { max: 100, key: 'moderate',  label: 'Moderate',                      dot: '#ffe08a', sky: 'linear-gradient(180deg,#1e3a52 0%,#3a6284 32%,#6894b0 66%,#9cc2d4 88%,#bddce6 100%)', specks: { n: 70,  r: 0.65, al: 0.55 }, blobs: { n: 8,  r: 18, al: 0.022 } },
-  { max: 150, key: 'sensitive', label: 'Unhealthy for Sensitive Groups', dot: '#ffb347', sky: 'linear-gradient(180deg,#2c1c06 0%,#785010 32%,#ba8828 66%,#d8b050 88%,#e8cc72 100%)', specks: { n: 160, r: 0.8,  al: 0.58 }, blobs: { n: 18, r: 22, al: 0.030 } },
-  { max: 200, key: 'unhealthy', label: 'Unhealthy',                     dot: '#ff7f50', sky: 'linear-gradient(180deg,#1c0804 0%,#782c08 32%,#b65020 66%,#d67840 88%,#e8a262 100%)', specks: { n: 280, r: 1.0,  al: 0.60 }, blobs: { n: 28, r: 28, al: 0.038 } },
-  { max: 300, key: 'vuhealthy', label: 'Very Unhealthy',                dot: '#c77dff', sky: 'linear-gradient(180deg,#0e0620 0%,#3c1866 32%,#6e40a0 66%,#9468be 88%,#b490d6 100%)', specks: { n: 440, r: 1.2,  al: 0.62 }, blobs: { n: 42, r: 34, al: 0.046 } },
-  { max: Infinity, key: 'hazardous', label: 'Hazardous',                dot: '#ff5555', sky: 'linear-gradient(180deg,#080204 0%,#3c0808 32%,#7e2018 66%,#ae4030 88%,#c86252 100%)', specks: { n: 650, r: 1.5,  al: 0.65 }, blobs: { n: 65, r: 42, al: 0.055 } },
+  { min: 0,   max: 50,  key: 'good',      label: 'Good',                          dot: '#7ee8a2', sky: 'linear-gradient(180deg,#0d3d6e 0%,#1a6bb8 32%,#3a9ad4 66%,#68bce6 88%,#90d4f0 100%)', specks: { n: [6, 35],    r: [0.4, 0.6],  al: [0.35, 0.50] }, blobs: { n: [0, 4],   r: [8, 14],  al: [0, 0.014] } },
+  { min: 51,  max: 100, key: 'moderate',  label: 'Moderate',                      dot: '#ffe08a', sky: 'linear-gradient(180deg,#1e3a52 0%,#3a6284 32%,#6894b0 66%,#9cc2d4 88%,#bddce6 100%)', specks: { n: [35, 90],   r: [0.6, 0.75], al: [0.50, 0.55] }, blobs: { n: [4, 12],  r: [14, 20], al: [0.014, 0.025] } },
+  { min: 101, max: 150, key: 'sensitive', label: 'Unhealthy for Sensitive Groups', dot: '#ffb347', sky: 'linear-gradient(180deg,#2c1c06 0%,#785010 32%,#ba8828 66%,#d8b050 88%,#e8cc72 100%)', specks: { n: [90, 180],  r: [0.75, 0.9], al: [0.55, 0.58] }, blobs: { n: [12, 22], r: [20, 24], al: [0.025, 0.032] } },
+  { min: 151, max: 200, key: 'unhealthy', label: 'Unhealthy',                     dot: '#ff7f50', sky: 'linear-gradient(180deg,#1c0804 0%,#782c08 32%,#b65020 66%,#d67840 88%,#e8a262 100%)', specks: { n: [180, 300], r: [0.9, 1.1],  al: [0.58, 0.60] }, blobs: { n: [22, 32], r: [24, 30], al: [0.032, 0.040] } },
+  { min: 201, max: 300, key: 'vuhealthy', label: 'Very Unhealthy',                dot: '#c77dff', sky: 'linear-gradient(180deg,#0e0620 0%,#3c1866 32%,#6e40a0 66%,#9468be 88%,#b490d6 100%)', specks: { n: [300, 480], r: [1.1, 1.3],  al: [0.60, 0.62] }, blobs: { n: [32, 48], r: [30, 36], al: [0.040, 0.048] } },
+  { min: 301, max: 500, key: 'hazardous', label: 'Hazardous',                     dot: '#ff5555', sky: 'linear-gradient(180deg,#080204 0%,#3c0808 32%,#7e2018 66%,#ae4030 88%,#c86252 100%)', specks: { n: [480, 650], r: [1.3, 1.5],  al: [0.62, 0.65] }, blobs: { n: [48, 65], r: [36, 42], al: [0.048, 0.055] } },
 ];
 
+function lerp(a, b, t) { return a + (b - a) * t; }
+
 function aqiState(aqi) {
-  return AQI_STATES.find(s => aqi <= s.max) || AQI_STATES[AQI_STATES.length - 1];
+  const tier = AQI_STATES.find(s => aqi <= s.max) || AQI_STATES[AQI_STATES.length - 1];
+  const t = Math.min(1, Math.max(0, (aqi - tier.min) / (tier.max - tier.min)));
+  return {
+    key: tier.key, label: tier.label, dot: tier.dot, sky: tier.sky,
+    specks: {
+      n:  Math.round(lerp(tier.specks.n[0],  tier.specks.n[1],  t)),
+      r:  lerp(tier.specks.r[0],  tier.specks.r[1],  t),
+      al: lerp(tier.specks.al[0], tier.specks.al[1], t),
+    },
+    blobs: {
+      n:  Math.round(lerp(tier.blobs.n[0],  tier.blobs.n[1],  t)),
+      r:  lerp(tier.blobs.r[0],  tier.blobs.r[1],  t),
+      al: lerp(tier.blobs.al[0], tier.blobs.al[1], t),
+    },
+  };
 }
 
 // Demo data for preview buttons
@@ -316,7 +336,7 @@ let W = 800, H = 580;
 let specks = [], blobs = [];
 let curState = aqiState(23);
 
-function roofTop() { return H - 20; }
+function roofTop() { return H - 4; }
 function spreadH() { return H * 0.55; }
 
 function mkSpeck() {
@@ -404,19 +424,25 @@ function draw() {
 // UI UPDATES
 // ═══════════════════════════════════════════
 function setLiveIndicator(online) {
+  const txt = liveTab.querySelector('span').nextSibling;
+  liveDot.classList.remove('pulse');
   if (online) {
     liveTab.style.borderColor = 'rgba(126,232,162,.7)';
     liveTab.style.background = 'rgba(126,232,162,.15)';
     liveTab.style.color = 'rgba(126,232,162,.95)';
     liveDot.style.background = '#7ee8a2';
-    liveTab.querySelector('span').nextSibling.textContent = 'Live';
+    txt.textContent = 'Live';
   } else {
     liveTab.style.borderColor = 'rgba(255,80,80,.6)';
     liveTab.style.background = 'rgba(255,80,80,.12)';
     liveTab.style.color = 'rgba(255,120,120,.9)';
     liveDot.style.background = '#ff5555';
-    liveTab.querySelector('span').nextSibling.textContent = 'Offline';
+    txt.textContent = 'Offline';
   }
+}
+
+function setFavicon(color) {
+  $('favicon').href = "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='12' fill='" + encodeURIComponent(color) + "'/></svg>";
 }
 
 function applyData(data) {
@@ -424,9 +450,13 @@ function applyData(data) {
   curState = st;
 
   skyEl.style.background = st.sky;
+  setFavicon(st.dot);
   anumEl.textContent = data.aqi;
   acatEl.textContent = st.label;
   ldotEl.style.background = st.dot;
+
+  $('location').textContent = CONFIG.LOCATION;
+  $('loc-row').style.opacity = '1';
 
   STAT_FIELDS.forEach(f => {
     statEls[f.id].textContent = f.format(data[f.id] ?? 0);
@@ -478,14 +508,22 @@ function setLiveMode() {
   });
 
   if (liveData) {
-    setLiveIndicator(true);
+    setLiveIndicator(lastFetchOk !== false);
     applyData(liveData);
+    if (failCount >= 3) {
+      acatEl.textContent = 'Stale data';
+      acatEl.classList.add('pulse');
+      statsEl.style.opacity = '0.5';
+    }
   } else {
     setLiveIndicator(false);
     skyEl.style.background = AQI_STATES[0].sky;
     anumEl.textContent = '\u2013';
-    acatEl.textContent = '\u2013';
+    acatEl.textContent = lastFetchOk === false ? 'Connection failed' : 'Connecting';
+    if (lastFetchOk !== false) acatEl.classList.add('pulse');
+    else acatEl.classList.remove('pulse');
     ldotEl.style.background = 'rgba(255,255,255,.2)';
+    $('loc-row').style.opacity = '0';
     statsEl.style.opacity = '0.4';
     STAT_FIELDS.forEach(f => { statEls[f.id].textContent = '\u2013'; });
   }
@@ -499,10 +537,14 @@ liveTab.addEventListener('click', setLiveMode);
 // ═══════════════════════════════════════════
 // API FETCH
 // ═══════════════════════════════════════════
+let lastFetchOk = null;
+let failCount = 0;
+
 async function fetchLatest() {
   if (!CONFIG.API_URL) {
     setLiveIndicator(false);
     acatEl.textContent = '\u2013';
+    acatEl.classList.remove('pulse');
     anumEl.textContent = '\u2013';
     statsEl.style.opacity = '0.4';
     return;
@@ -525,9 +567,26 @@ async function fetchLatest() {
       voc:      d.voc_index     ?? d.voc            ?? 0,
     };
 
+    failCount = 0;
+    lastFetchOk = true;
+    acatEl.classList.remove('pulse');
     if (!isPreview) { setLiveIndicator(true); applyData(liveData); }
   } catch (err) {
     console.warn('Fetch failed:', err);
+    failCount++;
+    lastFetchOk = false;
+
+    if (!isPreview) {
+      setLiveIndicator(false);
+      if (!liveData) {
+        acatEl.textContent = 'Connection failed';
+        acatEl.classList.remove('pulse');
+      } else if (failCount >= 3) {
+        acatEl.textContent = 'Stale data';
+        acatEl.classList.add('pulse');
+        statsEl.style.opacity = '0.5';
+      }
+    }
   }
 }
 
