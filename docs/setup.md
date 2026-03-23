@@ -87,7 +87,7 @@ const CONFIG = {
   SITE_NAME: '<your-domain>',
   LOCATION: '<your-location>',
   API_URL: 'https://<api-url>/v1/devices/<device-id>/latest',
-  POLL_INTERVAL: 60000,
+  POLL_INTERVAL: 5000,
 };
 ```
 
@@ -95,7 +95,7 @@ The API URL comes from stack outputs. The device ID is created when your first r
 
 ## 6. Get Your API Key
 
-The API key is needed for the sensor device (or faker) to POST readings. Read endpoints are public.
+The API key is needed for the sensor device to POST readings. Read endpoints are public.
 
 ```bash
 aws secretsmanager get-secret-value \
@@ -103,22 +103,17 @@ aws secretsmanager get-secret-value \
   --query SecretString --output text
 ```
 
-## 7. Test with Faker
+## 7. Test with Simulated Data
 
-Before your sensor device is ready, use the faker to simulate realistic readings:
+Before your sensor device is ready, use the simulator to generate realistic readings. The script auto-discovers the API URL and key from CloudFormation:
 
 ```bash
-cd faker
-pip install -r requirements.txt
-
-# Dry run (prints payload without sending)
-INGEST_URL=https://<api-url>/v1/ingest API_KEY=<your-api-key> python faker.py --dry-run
-
-# Send one reading
-INGEST_URL=https://<api-url>/v1/ingest API_KEY=<your-api-key> python faker.py --once
-
-# Continuous loop (every 60s)
-INGEST_URL=https://<api-url>/v1/ingest API_KEY=<your-api-key> python faker.py --loop
+./scripts/faker.sh dry-run           # Print payload without sending
+./scripts/faker.sh once              # Send a single reading
+./scripts/faker.sh start             # Start sending readings in background (every 60s)
+./scripts/faker.sh start 30          # Custom interval (every 30s)
+./scripts/faker.sh status            # Check if running + recent logs
+./scripts/faker.sh stop              # Stop the background loop
 ```
 
 ## 8. Database Access

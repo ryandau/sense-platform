@@ -5,9 +5,10 @@ Deployed as AWS Lambda via Mangum.
 """
 
 from datetime import datetime, timezone
-from typing import Optional, Any
+from typing import Optional, Any, Protocol
 import json
 import os
+import time
 
 import boto3
 from fastapi import FastAPI, HTTPException, Security
@@ -94,49 +95,74 @@ class ReadingPayload(BaseModel):
         return v
 
 
-def compute_air_quality(data: dict) -> dict:
-    computed = {}
-    pm25 = data.get("pm2_5")
-    if pm25 is not None:
-        if pm25 <= 12.0:
-            aqi = round((50.0 / 12.0) * pm25)
-        elif pm25 <= 35.4:
-            aqi = round(((100 - 51) / (35.4 - 12.1)) * (pm25 - 12.1) + 51)
-        elif pm25 <= 55.4:
-            aqi = round(((150 - 101) / (55.4 - 35.5)) * (pm25 - 35.5) + 101)
-        elif pm25 <= 150.4:
-            aqi = round(((200 - 151) / (150.4 - 55.5)) * (pm25 - 55.5) + 151)
-        elif pm25 <= 250.4:
-            aqi = round(((300 - 201) / (250.4 - 150.5)) * (pm25 - 150.5) + 201)
-        else:
-            aqi = round(((500 - 301) / (500.4 - 250.5)) * (pm25 - 250.5) + 301)
-
-        computed["aqi"] = aqi
-        computed["aqi_category"] = (
-            "Good" if aqi <= 50 else
-            "Moderate" if aqi <= 100 else
-            "Unhealthy for Sensitive Groups" if aqi <= 150 else
-            "Unhealthy" if aqi <= 200 else
-            "Very Unhealthy" if aqi <= 300 else
-            "Hazardous"
-        )
-
-    co2 = data.get("co2_ppm")
-    if co2 is not None:
-        computed["co2_status"] = (
-            "Good" if co2 < 800 else
-            "Acceptable" if co2 < 1000 else
-            "Poor" if co2 < 1500 else
-            "Very Poor" if co2 < 2000 else
-            "Dangerous"
-        )
-    return computed
+class ConversionEngine(Protocol):
+    def compute(self, type_slug: str, data: dict, conn) -> dict: ...
 
 
-def enrich(payload: ReadingPayload) -> dict:
+_breakpoint_cache: dict | None = None
+_breakpoint_cache_ts: float = 0
+_CACHE_TTL = 300
+
+
+class BreakpointEngine:
+    def _load_breakpoints(self, conn) -> dict:
+        global _breakpoint_cache, _breakpoint_cache_ts
+        now = time.time()
+        if _breakpoint_cache and (now - _breakpoint_cache_ts) < _CACHE_TTL:
+            return _breakpoint_cache
+
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT type_slug, input_field, output_field,
+                       bp_low, bp_high, idx_low, idx_high,
+                       category, interpolate
+                FROM conversion_breakpoints
+                ORDER BY type_slug, input_field, sort_order
+            """)
+            rows = cur.fetchall()
+
+        cache = {}
+        for row in rows:
+            key = (row["type_slug"], row["input_field"], row["output_field"])
+            cache.setdefault(key, [])
+            cache[key].append(row)
+
+        _breakpoint_cache = cache
+        _breakpoint_cache_ts = now
+        return cache
+
+    def compute(self, type_slug: str, data: dict, conn) -> dict:
+        breakpoints = self._load_breakpoints(conn)
+        computed = {}
+        for field_name, value in data.items():
+            if value is None:
+                continue
+            for cache_key, ranges in breakpoints.items():
+                if cache_key[0] != type_slug or cache_key[1] != field_name:
+                    continue
+                output_field = cache_key[2]
+                for bp in ranges:
+                    if float(bp["bp_low"]) <= float(value) <= float(bp["bp_high"]):
+                        if bp["interpolate"]:
+                            idx = ((float(bp["idx_high"]) - float(bp["idx_low"]))
+                                   / (float(bp["bp_high"]) - float(bp["bp_low"]))
+                                   * (float(value) - float(bp["bp_low"]))
+                                   + float(bp["idx_low"]))
+                            computed[output_field] = round(idx)
+                            computed[f"{output_field}_category"] = bp["category"]
+                        else:
+                            computed[output_field] = bp["category"]
+                        break
+        return computed
+
+
+_engine: ConversionEngine = BreakpointEngine()
+
+
+def enrich(payload: ReadingPayload, conn) -> dict:
     computed = payload.computed or {}
-    if payload.type_slug == "air_quality":
-        computed.update(compute_air_quality(payload.data))
+    if payload.type_slug:
+        computed.update(_engine.compute(payload.type_slug, payload.data, conn))
     return computed if computed else None
 
 
@@ -161,9 +187,9 @@ def build_summary(payload: ReadingPayload, computed: dict) -> str:
 
 @app.post("/ingest", status_code=201)
 def ingest_reading(payload: ReadingPayload, api_key: str = Security(verify_api_key)):
-    computed = enrich(payload)
     try:
         conn = get_db()
+        computed = enrich(payload, conn)
         with conn:
             with conn.cursor() as cur:
                 cur.execute("""

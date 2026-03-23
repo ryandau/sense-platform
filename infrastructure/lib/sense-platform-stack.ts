@@ -149,7 +149,7 @@ export class SensePlatformStack extends cdk.Stack {
     new triggers.Trigger(this, "SchemaMigration", {
       handler: migrationFn,
       executeAfter: [db],
-      executeOnHandlerChange: false,
+      executeOnHandlerChange: true,
     });
 
     // -----------------------------------------

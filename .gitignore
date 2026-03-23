@@ -39,6 +39,9 @@ npm-debug.log*
 *.log
 logs/
 
+# Scripts runtime
+*.pid
+
 # Testing
 .pytest_cache/
 .coverage

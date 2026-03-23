@@ -2,9 +2,9 @@
 
 [![CI/CD](https://github.com/ryandau/sense-platform/actions/workflows/deploy.yml/badge.svg)](https://github.com/ryandau/sense-platform/actions/workflows/deploy.yml)
 
-Sensor-agnostic IoT data ingestion platform. Accepts readings from any device type (air quality, soil, water, noise, environment), stores them in PostgreSQL with pgvector, and serves a real-time visualisation frontend.
+Sensor-agnostic IoT data ingestion platform. Accepts readings from any device type (air quality, soil, water, noise, environment), stores them in PostgreSQL with pgvector, and serves a live visualisation frontend.
 
-Built around a physical air quality monitor (M5Stack Air Quality Kit v1.1) but designed to be device-agnostic from the start. The same endpoint accepts soil sensors, water quality monitors, noise meters — anything that can make an HTTP request.
+The same endpoint accepts air quality monitors, soil sensors, water quality monitors, noise meters — anything that can make an HTTP request.
 
 Stack: FastAPI, AWS Lambda, API Gateway, RDS PostgreSQL, pgvector, S3, AWS CDK, GitHub Actions
 
@@ -31,10 +31,9 @@ sense-platform/
 │   └── tests/                Unit tests
 ├── frontend/               Static frontend
 │   └── index.html            Single-page visualisation dashboard
-├── faker/                  Sensor data simulator
-│   └── faker.py              Generates realistic readings
 ├── scripts/                Helper scripts
-│   └── bastion.sh            Bastion start/stop/creds/status
+│   ├── bastion.sh            Bastion start/stop/creds/status
+│   └── faker.sh              Sensor data simulator
 ├── infrastructure/         AWS CDK stack
 │   ├── lib/                  Stack definition
 │   ├── lambda/               Migration Lambda source
@@ -54,8 +53,7 @@ sense-platform/
 
 Infrastructure deploys via GitHub Actions (manual trigger):
 
-1. Push to `main`
-2. Go to **Actions** > **Sense Platform CI/CD** > **Run workflow**
+**Actions** > **Sense Platform CI/CD** > **Run workflow**
 
 This provisions the full stack: VPC, RDS, Lambdas, API Gateway, S3 frontend bucket, bastion host, and Secrets Manager entries.
 
@@ -125,7 +123,7 @@ const CONFIG = {
   SITE_NAME: '<your-domain>',
   LOCATION: '<your-location>',
   API_URL: 'https://<api-url>/v1/devices/<device-id>/latest',
-  POLL_INTERVAL: 60000,
+  POLL_INTERVAL: 5000,
 };
 ```
 

@@ -112,6 +112,53 @@ INSERT INTO device_types (slug, name, description, fields) VALUES
  '{"temperature_c":{"unit":"°C","label":"Temperature","range":[-40,85]},"humidity_pct":{"unit":"%RH","label":"Humidity","range":[0,100]},"pressure_hpa":{"unit":"hPa","label":"Pressure","range":[300,1100]},"dew_point_c":{"unit":"°C","label":"Dew Point","range":[-40,60]}}'::jsonb)
 ON CONFLICT (slug) DO NOTHING;
 
+CREATE TABLE IF NOT EXISTS conversion_breakpoints (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    type_slug       VARCHAR(64) NOT NULL REFERENCES device_types(slug),
+    input_field     VARCHAR(64) NOT NULL,
+    output_field    VARCHAR(64) NOT NULL,
+    bp_low          DECIMAL(12,4) NOT NULL,
+    bp_high         DECIMAL(12,4) NOT NULL,
+    idx_low         DECIMAL(12,4),
+    idx_high        DECIMAL(12,4),
+    category        VARCHAR(64),
+    interpolate     BOOLEAN NOT NULL DEFAULT TRUE,
+    sort_order      SMALLINT NOT NULL DEFAULT 0,
+    created_at      TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE (type_slug, input_field, sort_order)
+);
+
+CREATE INDEX IF NOT EXISTS idx_conv_bp_lookup
+    ON conversion_breakpoints(type_slug, input_field, sort_order);
+
+-- EPA PM2.5 AQI breakpoints
+INSERT INTO conversion_breakpoints (type_slug, input_field, output_field, bp_low, bp_high, idx_low, idx_high, category, interpolate, sort_order) VALUES
+('air_quality', 'pm2_5', 'aqi', 0,     12.0,   0,   50,  'Good',                          TRUE, 1),
+('air_quality', 'pm2_5', 'aqi', 12.1,  35.4,   51,  100, 'Moderate',                      TRUE, 2),
+('air_quality', 'pm2_5', 'aqi', 35.5,  55.4,   101, 150, 'Unhealthy for Sensitive Groups', TRUE, 3),
+('air_quality', 'pm2_5', 'aqi', 55.5,  150.4,  151, 200, 'Unhealthy',                     TRUE, 4),
+('air_quality', 'pm2_5', 'aqi', 150.5, 250.4,  201, 300, 'Very Unhealthy',                TRUE, 5),
+('air_quality', 'pm2_5', 'aqi', 250.5, 500.4,  301, 500, 'Hazardous',                     TRUE, 6)
+ON CONFLICT DO NOTHING;
+
+-- Australian NEPM PM2.5 categories (1-hour, QLD/NSW standard)
+INSERT INTO conversion_breakpoints (type_slug, input_field, output_field, bp_low, bp_high, idx_low, idx_high, category, interpolate, sort_order) VALUES
+('air_quality', 'pm2_5', 'aqi_au_category', 0,     24.9999, NULL, NULL, 'Good',            FALSE, 1),
+('air_quality', 'pm2_5', 'aqi_au_category', 25,    49.9999, NULL, NULL, 'Fair',            FALSE, 2),
+('air_quality', 'pm2_5', 'aqi_au_category', 50,    99.9999, NULL, NULL, 'Poor',            FALSE, 3),
+('air_quality', 'pm2_5', 'aqi_au_category', 100,   299.9999, NULL, NULL, 'Very Poor',       FALSE, 4),
+('air_quality', 'pm2_5', 'aqi_au_category', 300,   999.9999, NULL, NULL, 'Extremely Poor',  FALSE, 5)
+ON CONFLICT DO NOTHING;
+
+-- CO2 indoor air quality thresholds
+INSERT INTO conversion_breakpoints (type_slug, input_field, output_field, bp_low, bp_high, idx_low, idx_high, category, interpolate, sort_order) VALUES
+('air_quality', 'co2_ppm', 'co2_status', 0,    799.9999,  NULL, NULL, 'Good',       FALSE, 1),
+('air_quality', 'co2_ppm', 'co2_status', 800,  999.9999,  NULL, NULL, 'Acceptable', FALSE, 2),
+('air_quality', 'co2_ppm', 'co2_status', 1000, 1499.9999, NULL, NULL, 'Poor',       FALSE, 3),
+('air_quality', 'co2_ppm', 'co2_status', 1500, 1999.9999, NULL, NULL, 'Very Poor',  FALSE, 4),
+('air_quality', 'co2_ppm', 'co2_status', 2000, 99999,     NULL, NULL, 'Dangerous',  FALSE, 5)
+ON CONFLICT DO NOTHING;
+
 INSERT INTO knowledge_base (type_slug, category, title, content) VALUES
 ('air_quality', 'thresholds', 'WHO PM2.5 Guidelines',
  'WHO Air Quality Guidelines (2021): PM2.5 annual mean should not exceed 5 μg/m³. 24-hour mean should not exceed 15 μg/m³. Levels above 35 μg/m³ are unhealthy for sensitive groups. Levels above 55 μg/m³ are unhealthy for all. Levels above 150 μg/m³ are very unhealthy. Levels above 250 μg/m³ are hazardous.')
