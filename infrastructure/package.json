@@ -1,0 +1,21 @@
+{
+  "name": "sense-platform-infrastructure",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "cdk": "cdk"
+  },
+  "devDependencies": {
+    "aws-cdk": "latest",
+    "typescript": "~5.4.0",
+    "@types/node": "20.11.0",
+    "ts-node": "^10.9.0",
+    "source-map-support": "^0.5.21"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "latest",
+    "constructs": "^10.0.0"
+  }
+}

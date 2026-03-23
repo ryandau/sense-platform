@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Sense Platform</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/cormorant-garamond@5/400.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/outfit@5/400.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/outfit@5/500.css">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; background: #111; }
+    body { display: flex; flex-direction: column; font-family: 'Outfit', sans-serif; }
+
+    /* Scene container */
+    .scene {
+      width: 100%; flex: 1;
+      min-height: 520px;
+      position: relative; overflow: hidden;
+    }
+
+    /* Sky gradient — transitions on AQI change */
+    .sky {
+      position: absolute; inset: 0;
+      transition: background 2.8s cubic-bezier(.4,0,.2,1);
+      background: linear-gradient(180deg,#0d3d6e 0%,#1a6bb8 32%,#3a9ad4 66%,#68bce6 88%,#90d4f0 100%);
+    }
+
+    /* Particle canvas */
+    .particle-canvas {
+      position: absolute; inset: 0;
+      display: block; pointer-events: none; z-index: 4;
+    }
+
+    /* Skyline SVG */
+    .skyline {
+      position: absolute; bottom: 0; left: 0;
+      width: 100%; height: 260px;
+      z-index: 2; pointer-events: none;
+    }
+
+    /* Top bar */
+    .top-bar {
+      position: absolute; top: 0; left: 0; right: 0;
+      padding: 18px 24px;
+      display: flex; justify-content: space-between; align-items: center;
+      z-index: 10; pointer-events: none;
+    }
+    .top-bar-label {
+      font-size: 9px; letter-spacing: .22em;
+      text-transform: uppercase; color: rgba(255,255,255,.3);
+    }
+    .top-bar-clock {
+      font-size: 9px; color: rgba(255,255,255,.22);
+    }
+
+    /* Centre content block */
+    .centre-block {
+      position: absolute; top: 54px; left: 0; right: 0;
+      text-align: center; z-index: 10; pointer-events: none;
+    }
+    .centre-label {
+      font-size: 8px; letter-spacing: .3em;
+      text-transform: uppercase; color: rgba(255,255,255,.22);
+      margin-bottom: 6px;
+    }
+    .aqi-number {
+      font-family: 'Cormorant Garamond', Georgia, serif;
+      font-size: 118px; font-weight: 400;
+      line-height: .9; letter-spacing: -2px;
+      color: rgba(255,255,255,.9); padding-bottom: 26px;
+    }
+    .aqi-category {
+      font-size: 9px; letter-spacing: .24em;
+      text-transform: uppercase; color: rgba(255,255,255,.42);
+    }
+    .location-row {
+      display: flex; align-items: center; gap: 5px;
+      justify-content: center; margin-top: 9px;
+    }
+    .location-dot {
+      width: 4px; height: 4px; border-radius: 50%;
+      background: rgba(255,255,255,.2); flex-shrink: 0;
+      transition: background 1.5s;
+    }
+    .location-label {
+      font-size: 10px; letter-spacing: .12em;
+      text-transform: uppercase; color: rgba(255,255,255,.38);
+    }
+
+    /* Stats row */
+    .stats-container {
+      opacity: 0; transition: opacity .6s ease; margin-top: 22px;
+    }
+    .stats-divider {
+      width: 280px; border-top: 1px solid rgba(255,255,255,.1);
+      margin: 0 auto 16px;
+    }
+    .stats-row {
+      display: inline-flex; gap: 22px;
+      justify-content: center; align-items: flex-end;
+    }
+    .stat-item { text-align: center; }
+    .stat-value {
+      font-size: 16px; font-weight: 500;
+      color: rgba(255,255,255,.88); line-height: 1;
+    }
+    .stat-label {
+      font-size: 9px; letter-spacing: .08em;
+      text-transform: uppercase; color: rgba(255,255,255,.35);
+      margin-top: 5px;
+    }
+
+    /* Button bar */
+    .btn-bar {
+      width: 100%; background: #1c1c1c;
+      border-top: 1px solid rgba(255,255,255,.18); flex-shrink: 0;
+    }
+    .btn-bar-inner {
+      padding: 10px 16px; overflow-x: auto;
+      -webkit-overflow-scrolling: touch; scrollbar-width: none;
+    }
+    .btn-bar-inner::-webkit-scrollbar { display: none; }
+    .btn-row {
+      display: flex; align-items: center; gap: 6px;
+      white-space: nowrap; min-width: max-content; justify-content: center;
+    }
+    .btn-divider {
+      width: 1px; height: 14px; background: rgba(255,255,255,.12);
+      display: inline-block; margin: 0 4px; vertical-align: middle;
+    }
+
+    /* Shared button style */
+    .btn {
+      padding: 7px 14px; border-radius: 20px;
+      border: 1.5px solid #888; background: transparent; color: #ccc;
+      font-size: 11px; font-family: 'Outfit', sans-serif;
+      cursor: pointer; white-space: nowrap;
+      -webkit-appearance: none; appearance: none; letter-spacing: .04em;
+    }
+    .btn-live {
+      border-color: rgba(255,80,80,.6);
+      background: rgba(255,80,80,.12);
+      color: rgba(255,120,120,.9);
+      display: inline-flex; align-items: center; gap: 5px;
+    }
+    .btn-dot {
+      width: 5px; height: 5px; border-radius: 50%;
+      display: inline-block;
+    }
+  </style>
+</head>
+<body>
+
+<div id="sc" class="scene">
+  <div id="sky" class="sky"></div>
+  <canvas id="pc" class="particle-canvas"></canvas>
+
+  <!-- Skyline silhouette -->
+  <svg class="skyline" viewBox="0 0 1440 260" preserveAspectRatio="xMidYMax slice" xmlns="http://www.w3.org/2000/svg">
+    <!-- Distant city backdrop -->
+    <path fill="#1e1b16" d="M0,260 L0,192 L28,192 L28,180 L58,180 L58,192 L72,192 L72,162 L76,156 L80,151 L86,148 L94,147 L102,148 L108,151 L112,156 L116,162 L116,192 L132,192 L132,174 L165,174 L165,192 L188,192 L188,170 L216,170 L216,182 L244,182 L244,170 L272,170 L272,192 L295,192 L295,175 L326,175 L326,192 L352,192 L352,168 L388,168 L388,180 L422,180 L422,168 L458,168 L458,192 L480,192 L480,174 L514,174 L514,192 L538,192 L538,166 L572,166 L572,178 L606,178 L606,166 L640,166 L640,192 L665,192 L665,174 L698,174 L698,192 L722,192 L722,164 L758,164 L758,176 L794,176 L794,164 L830,164 L830,192 L855,192 L855,172 L888,172 L888,192 L912,192 L912,162 L950,162 L950,174 L988,174 L988,162 L1024,162 L1024,192 L1048,192 L1048,174 L1080,174 L1080,192 L1104,192 L1104,166 L1140,166 L1140,178 L1176,178 L1176,166 L1212,166 L1212,192 L1238,192 L1238,172 L1272,172 L1272,192 L1296,192 L1296,180 L1330,180 L1330,192 L1360,192 L1360,176 L1400,176 L1400,192 L1440,192 L1440,260 Z"/>
+    <!-- Mid Queenslanders + unit blocks -->
+    <path fill="#161310" d="M0,260 L0,232 L18,196 L52,196 L70,220 L70,232 L82,232 L82,218 L102,196 L136,196 L156,218 L156,232 L162,232 L162,204 L204,204 L204,232 L210,232 L210,216 L234,190 L274,190 L298,216 L298,232 L306,232 L306,204 L352,204 L352,232 L358,232 L358,214 L384,186 L428,186 L454,214 L454,232 L462,232 L462,220 L482,200 L514,200 L534,220 L534,232 L540,232 L540,204 L588,204 L588,232 L594,232 L594,216 L620,192 L664,192 L690,216 L690,232 L698,232 L698,220 L722,200 L758,200 L782,220 L782,232 L790,232 L790,204 L840,204 L840,232 L848,232 L848,214 L876,186 L924,186 L952,214 L952,232 L960,232 L960,220 L984,198 L1020,198 L1044,220 L1044,232 L1052,232 L1052,206 L1098,206 L1098,232 L1104,232 L1104,214 L1132,186 L1180,186 L1208,214 L1208,232 L1216,232 L1216,220 L1240,198 L1276,198 L1300,220 L1300,232 L1308,232 L1308,204 L1358,204 L1358,232 L1364,232 L1390,192 L1430,192 L1440,210 L1440,260 L0,260 Z"/>
+    <!-- Foreground rooftops -->
+    <path fill="#0f0d0b" d="M0,260 L0,246 L28,208 L78,208 L106,238 L106,246 L118,246 L118,236 L152,204 L210,204 L244,236 L244,246 L252,246 L252,218 L310,218 L310,246 L322,246 L322,234 L360,200 L428,200 L466,234 L466,246 L478,246 L478,218 L532,218 L532,246 L544,246 L544,236 L580,208 L630,208 L664,236 L664,246 L676,246 L676,202 L754,202 L820,234 L820,246 L832,246 L832,218 L890,218 L890,246 L902,246 L902,234 L940,202 L1008,202 L1046,234 L1046,246 L1058,246 L1058,218 L1114,218 L1114,246 L1126,246 L1126,236 L1164,208 L1214,208 L1250,236 L1250,246 L1262,246 L1262,200 L1340,200 L1402,232 L1402,246 L1440,246 L1440,260 L0,260 Z"/>
+    <rect x="0" y="246" width="1440" height="14" fill="#0b0908"/>
+    <!-- Rooftop details -->
+    <circle cx="747" cy="199" r="4" fill="#0d0b09"/>
+    <rect x="745.5" y="190" width="1.8" height="11" fill="#141210"/>
+    <line x1="612" y1="202" x2="612" y2="176" stroke="#111009" stroke-width="1.2"/>
+    <line x1="599" y1="183" x2="625" y2="183" stroke="#111009" stroke-width="1"/>
+    <line x1="602" y1="189" x2="622" y2="189" stroke="#111009" stroke-width=".7"/>
+    <!-- Power poles -->
+    <line x1="200" y1="150" x2="200" y2="246" stroke="#141210" stroke-width="2.2"/>
+    <line x1="182" y1="150" x2="218" y2="150" stroke="#141210" stroke-width="2"/>
+    <line x1="556" y1="150" x2="556" y2="246" stroke="#141210" stroke-width="2.2"/>
+    <line x1="538" y1="150" x2="574" y2="150" stroke="#141210" stroke-width="2"/>
+    <line x1="904" y1="150" x2="904" y2="246" stroke="#141210" stroke-width="2.2"/>
+    <line x1="886" y1="150" x2="922" y2="150" stroke="#141210" stroke-width="2"/>
+    <line x1="1250" y1="150" x2="1250" y2="246" stroke="#141210" stroke-width="2.2"/>
+    <line x1="1232" y1="150" x2="1268" y2="150" stroke="#141210" stroke-width="2"/>
+    <!-- Power lines -->
+    <path d="M182,150 C280,162 440,166 538,150" stroke="#131109" stroke-width="1" fill="none"/>
+    <path d="M538,150 C636,162 796,166 886,150" stroke="#131109" stroke-width="1" fill="none"/>
+    <path d="M886,150 C984,162 1144,166 1232,150" stroke="#131109" stroke-width="1" fill="none"/>
+    <path d="M218,150 C316,163 476,167 574,150" stroke="#131109" stroke-width=".7" fill="none"/>
+    <path d="M574,150 C672,163 832,167 922,150" stroke="#131109" stroke-width=".7" fill="none"/>
+    <path d="M922,150 C1020,163 1170,167 1268,150" stroke="#131109" stroke-width=".7" fill="none"/>
+  </svg>
+
+  <!-- Top bar -->
+  <div class="top-bar">
+    <span id="site-name" class="top-bar-label">sense.donohue.ai</span>
+    <span id="ts" class="top-bar-clock">&ndash;</span>
+  </div>
+
+  <!-- Centre content -->
+  <div class="centre-block">
+    <div class="centre-label">Air Quality Index</div>
+    <div id="anum" class="aqi-number">&ndash;</div>
+    <div id="acat" class="aqi-category">Loading</div>
+    <div class="location-row">
+      <div id="ldot" class="location-dot"></div>
+      <span id="location" class="location-label">Annerley &middot; Brisbane</span>
+    </div>
+
+    <div id="stats" class="stats-container">
+      <div class="stats-divider"></div>
+      <div class="stats-row" id="stats-row"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Button bar -->
+<div class="btn-bar">
+  <div class="btn-bar-inner">
+    <div class="btn-row">
+      <button id="live-tab" class="btn btn-live">
+        <span id="live-dot" class="btn-dot" style="background:#ff5555"></span>Offline
+      </button>
+      <span class="btn-divider"></span>
+      <button data-s="good" class="btn">Good</button>
+      <button data-s="moderate" class="btn">Moderate</button>
+      <button data-s="unhealthy" class="btn">Unhealthy</button>
+      <button data-s="hazardous" class="btn">Hazardous</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════
+// CONFIG
+// ═══════════════════════════════════════════
+const CONFIG = {
+  SITE_NAME: 'sense.donohue.ai',
+  LOCATION: 'Annerley \u00b7 Brisbane',
+  API_URL: 'https://k49cf9ym46.execute-api.ap-southeast-2.amazonaws.com/v1/devices/faker-aq-brisbane/latest',
+  POLL_INTERVAL: 60000,
+};
+
+// Stats to display — order matches the row
+const STAT_FIELDS = [
+  { id: 'pm25',     label: 'PM2.5',    format: v => Math.round(v) },
+  { id: 'pm10',     label: 'PM10',     format: v => Math.round(v) },
+  { id: 'co2',      label: 'CO2 ppm',  format: v => Math.round(v) },
+  { id: 'temp',     label: 'Temp',     format: v => Math.round(v) + '\u00b0' },
+  { id: 'humidity', label: 'Humidity', format: v => Math.round(v) + '%' },
+  { id: 'voc',      label: 'VOC',      format: v => Math.round(v) },
+];
+
+// ═══════════════════════════════════════════
+// AQI STATE DEFINITIONS
+// ═══════════════════════════════════════════
+const AQI_STATES = [
+  { max: 50,  key: 'good',      label: 'Good',                          dot: '#7ee8a2', sky: 'linear-gradient(180deg,#0d3d6e 0%,#1a6bb8 32%,#3a9ad4 66%,#68bce6 88%,#90d4f0 100%)', specks: { n: 20,  r: 0.5,  al: 0.50 }, blobs: { n: 0,  r: 0,  al: 0     } },
+  { max: 100, key: 'moderate',  label: 'Moderate',                      dot: '#ffe08a', sky: 'linear-gradient(180deg,#1e3a52 0%,#3a6284 32%,#6894b0 66%,#9cc2d4 88%,#bddce6 100%)', specks: { n: 70,  r: 0.65, al: 0.55 }, blobs: { n: 8,  r: 18, al: 0.022 } },
+  { max: 150, key: 'sensitive', label: 'Unhealthy for Sensitive Groups', dot: '#ffb347', sky: 'linear-gradient(180deg,#2c1c06 0%,#785010 32%,#ba8828 66%,#d8b050 88%,#e8cc72 100%)', specks: { n: 160, r: 0.8,  al: 0.58 }, blobs: { n: 18, r: 22, al: 0.030 } },
+  { max: 200, key: 'unhealthy', label: 'Unhealthy',                     dot: '#ff7f50', sky: 'linear-gradient(180deg,#1c0804 0%,#782c08 32%,#b65020 66%,#d67840 88%,#e8a262 100%)', specks: { n: 280, r: 1.0,  al: 0.60 }, blobs: { n: 28, r: 28, al: 0.038 } },
+  { max: 300, key: 'vuhealthy', label: 'Very Unhealthy',                dot: '#c77dff', sky: 'linear-gradient(180deg,#0e0620 0%,#3c1866 32%,#6e40a0 66%,#9468be 88%,#b490d6 100%)', specks: { n: 440, r: 1.2,  al: 0.62 }, blobs: { n: 42, r: 34, al: 0.046 } },
+  { max: Infinity, key: 'hazardous', label: 'Hazardous',                dot: '#ff5555', sky: 'linear-gradient(180deg,#080204 0%,#3c0808 32%,#7e2018 66%,#ae4030 88%,#c86252 100%)', specks: { n: 650, r: 1.5,  al: 0.65 }, blobs: { n: 65, r: 42, al: 0.055 } },
+];
+
+function aqiState(aqi) {
+  return AQI_STATES.find(s => aqi <= s.max) || AQI_STATES[AQI_STATES.length - 1];
+}
+
+// Demo data for preview buttons
+const DEMO = {
+  good:      { aqi: 23,  pm25: 4.2,   pm10: 8.1,   co2: 412, temp: 26.4, humidity: 58, voc: 82  },
+  moderate:  { aqi: 76,  pm25: 15.8,  pm10: 28.4,  co2: 445, temp: 28.1, humidity: 62, voc: 124 },
+  sensitive: { aqi: 128, pm25: 46.2,  pm10: 72.1,  co2: 468, temp: 30.2, humidity: 45, voc: 186 },
+  unhealthy: { aqi: 165, pm25: 68.4,  pm10: 95.2,  co2: 512, temp: 31.8, humidity: 38, voc: 245 },
+  vuhealthy: { aqi: 248, pm25: 148.2, pm10: 198.5, co2: 589, temp: 29.4, humidity: 42, voc: 352 },
+  hazardous: { aqi: 342, pm25: 245.8, pm10: 312.4, co2: 645, temp: 28.9, humidity: 35, voc: 498 },
+};
+
+// ═══════════════════════════════════════════
+// DOM REFS
+// ═══════════════════════════════════════════
+const $ = id => document.getElementById(id);
+const skyEl     = $('sky');
+const anumEl    = $('anum');
+const acatEl    = $('acat');
+const ldotEl    = $('ldot');
+const statsEl   = $('stats');
+const liveTab   = $('live-tab');
+const liveDot   = $('live-dot');
+const canvas    = $('pc');
+const ctx       = canvas.getContext('2d');
+
+// ═══════════════════════════════════════════
+// BUILD STAT ELEMENTS
+// ═══════════════════════════════════════════
+const statEls = {};
+const statsRow = $('stats-row');
+STAT_FIELDS.forEach(f => {
+  const item = document.createElement('div');
+  item.className = 'stat-item';
+  const val = document.createElement('div');
+  val.className = 'stat-value';
+  val.textContent = '\u2013';
+  const lbl = document.createElement('div');
+  lbl.className = 'stat-label';
+  lbl.textContent = f.label;
+  item.appendChild(val);
+  item.appendChild(lbl);
+  statsRow.appendChild(item);
+  statEls[f.id] = val;
+});
+
+// ═══════════════════════════════════════════
+// PARTICLE SYSTEM
+// ═══════════════════════════════════════════
+let W = 800, H = 580;
+let specks = [], blobs = [];
+let curState = aqiState(23);
+
+function roofTop() { return H - 20; }
+function spreadH() { return H * 0.55; }
+
+function mkSpeck() {
+  const base = roofTop(), spread = spreadH(), u = Math.random();
+  return {
+    x: Math.random() * W, y: base - Math.pow(u, 1.6) * spread,
+    vx: (Math.random() - .5) * .25, vy: (Math.random() - .5) * .06,
+    phase: Math.random() * Math.PI * 2, spd: .003 + Math.random() * .007,
+  };
+}
+
+function mkBlob() {
+  const base = roofTop(), spread = spreadH(), u = Math.random();
+  return {
+    x: Math.random() * W, y: base - 10 - Math.pow(u, 1.2) * spread * 0.85,
+    vx: (Math.random() - .5) * .15, vy: (Math.random() - .5) * .035,
+    phase: Math.random() * Math.PI * 2, spd: .0015 + Math.random() * .003,
+  };
+}
+
+function initCanvas() {
+  const el = $('sc');
+  W = el.offsetWidth || 800;
+  H = el.offsetHeight || 580;
+  canvas.width = W;
+  canvas.height = H;
+  specks = Array.from({ length: 650 }, mkSpeck);
+  blobs = Array.from({ length: 65 }, mkBlob);
+}
+
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+  const st = curState;
+  const base = roofTop();
+  const spread = spreadH();
+  const ceiling = base - spread;
+
+  // Haze layer — gradient fog rising from skyline
+  if (st.blobs.n > 0) {
+    const hazeGrad = ctx.createLinearGradient(0, H, 0, 0);
+    const hazeAlpha = Math.min(st.blobs.al * 3.5, 0.22);
+    hazeGrad.addColorStop(0, 'rgba(255,255,255,' + hazeAlpha.toFixed(3) + ')');
+    hazeGrad.addColorStop(0.15, 'rgba(255,255,255,' + (hazeAlpha * 0.8).toFixed(3) + ')');
+    hazeGrad.addColorStop(0.4, 'rgba(255,255,255,' + (hazeAlpha * 0.35).toFixed(3) + ')');
+    hazeGrad.addColorStop(0.65, 'rgba(255,255,255,' + (hazeAlpha * 0.1).toFixed(3) + ')');
+    hazeGrad.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = hazeGrad;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  for (let i = 0; i < st.blobs.n; i++) {
+    const p = blobs[i];
+    p.x += p.vx; p.y += p.vy; p.phase += p.spd;
+    if (p.x < -st.blobs.r) p.x = W + st.blobs.r;
+    if (p.x > W + st.blobs.r) p.x = -st.blobs.r;
+    if (p.y > base + 4) { p.y = base + 4; p.vy = -Math.abs(p.vy) * .4; }
+    if (p.y < ceiling) { p.y = ceiling; p.vy = Math.abs(p.vy) * .4; }
+    const above = Math.max(0, base - p.y);
+    const alpha = st.blobs.al * Math.exp(-above / (spread * 0.45)) * (.5 + .5 * Math.sin(p.phase));
+    const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, st.blobs.r);
+    grad.addColorStop(0, 'rgba(255,255,255,' + alpha.toFixed(4) + ')');
+    grad.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.beginPath(); ctx.arc(p.x, p.y, st.blobs.r, 0, Math.PI * 2);
+    ctx.fillStyle = grad; ctx.fill();
+  }
+
+  for (let i = 0; i < st.specks.n; i++) {
+    const p = specks[i];
+    p.x += p.vx; p.y += p.vy; p.phase += p.spd;
+    if (p.x < -2) p.x = W + 2;
+    if (p.x > W + 2) p.x = -2;
+    if (p.y > base + 3) { p.y = base + 3; p.vy = -Math.abs(p.vy) * .5; }
+    if (p.y < ceiling) { p.y = ceiling; p.vy = Math.abs(p.vy) * .5; }
+    const above = Math.max(0, base - p.y);
+    const alpha = st.specks.al * Math.exp(-above / (spread * 0.35)) * (.55 + .45 * Math.sin(p.phase));
+    ctx.beginPath(); ctx.arc(p.x, p.y, st.specks.r, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,255,255,' + Math.max(0, alpha).toFixed(3) + ')';
+    ctx.fill();
+  }
+
+  requestAnimationFrame(draw);
+}
+
+// ═══════════════════════════════════════════
+// UI UPDATES
+// ═══════════════════════════════════════════
+function setLiveIndicator(online) {
+  if (online) {
+    liveTab.style.borderColor = 'rgba(126,232,162,.7)';
+    liveTab.style.background = 'rgba(126,232,162,.15)';
+    liveTab.style.color = 'rgba(126,232,162,.95)';
+    liveDot.style.background = '#7ee8a2';
+    liveTab.querySelector('span').nextSibling.textContent = 'Live';
+  } else {
+    liveTab.style.borderColor = 'rgba(255,80,80,.6)';
+    liveTab.style.background = 'rgba(255,80,80,.12)';
+    liveTab.style.color = 'rgba(255,120,120,.9)';
+    liveDot.style.background = '#ff5555';
+    liveTab.querySelector('span').nextSibling.textContent = 'Offline';
+  }
+}
+
+function applyData(data) {
+  const st = aqiState(data.aqi);
+  curState = st;
+
+  skyEl.style.background = st.sky;
+  anumEl.textContent = data.aqi;
+  acatEl.textContent = st.label;
+  ldotEl.style.background = st.dot;
+
+  STAT_FIELDS.forEach(f => {
+    statEls[f.id].textContent = f.format(data[f.id] ?? 0);
+  });
+
+  statsEl.style.opacity = '1';
+
+  if (!isPreview) {
+    document.querySelectorAll('[data-s]').forEach(b => {
+      b.style.borderColor = '#888';
+      b.style.background = 'transparent';
+      b.style.color = '#ccc';
+    });
+  }
+}
+
+// ═══════════════════════════════════════════
+// LIVE / PREVIEW MODE
+// ═══════════════════════════════════════════
+let isPreview = false;
+let liveData = null;
+
+function setPreviewMode(key) {
+  isPreview = true;
+  ldotEl.style.opacity = '0.3';
+
+  liveTab.style.borderColor = liveData ? 'rgba(126,232,162,.25)' : 'rgba(255,80,80,.25)';
+  liveTab.style.background = 'transparent';
+  liveTab.style.color = liveData ? 'rgba(126,232,162,.35)' : 'rgba(255,120,120,.35)';
+
+  document.querySelectorAll('[data-s]').forEach(b => {
+    const on = b.dataset.s === key;
+    b.style.borderColor = on ? '#fff' : '#888';
+    b.style.background = on ? 'rgba(255,255,255,.18)' : 'transparent';
+    b.style.color = on ? '#fff' : '#ccc';
+  });
+
+  applyData(DEMO[key]);
+}
+
+function setLiveMode() {
+  isPreview = false;
+  ldotEl.style.opacity = '1';
+
+  document.querySelectorAll('[data-s]').forEach(b => {
+    b.style.borderColor = '#888';
+    b.style.background = 'transparent';
+    b.style.color = '#ccc';
+  });
+
+  if (liveData) {
+    setLiveIndicator(true);
+    applyData(liveData);
+  } else {
+    setLiveIndicator(false);
+    skyEl.style.background = AQI_STATES[0].sky;
+    anumEl.textContent = '\u2013';
+    acatEl.textContent = '\u2013';
+    ldotEl.style.background = 'rgba(255,255,255,.2)';
+    statsEl.style.opacity = '0.4';
+    STAT_FIELDS.forEach(f => { statEls[f.id].textContent = '\u2013'; });
+  }
+}
+
+document.querySelectorAll('[data-s]').forEach(b =>
+  b.addEventListener('click', () => setPreviewMode(b.dataset.s))
+);
+liveTab.addEventListener('click', setLiveMode);
+
+// ═══════════════════════════════════════════
+// API FETCH
+// ═══════════════════════════════════════════
+async function fetchLatest() {
+  if (!CONFIG.API_URL) {
+    setLiveIndicator(false);
+    acatEl.textContent = '\u2013';
+    anumEl.textContent = '\u2013';
+    statsEl.style.opacity = '0.4';
+    return;
+  }
+
+  try {
+    const res = await fetch(CONFIG.API_URL, { headers: { 'Accept': 'application/json' } });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const json = await res.json();
+
+    const d = json.data || json;
+    const c = json.computed || {};
+    liveData = {
+      aqi:      c.aqi           ?? d.aqi           ?? 0,
+      pm25:     d.pm2_5         ?? d.pm25           ?? 0,
+      pm10:     d.pm10_0        ?? d.pm10           ?? 0,
+      co2:      d.co2_ppm       ?? d.co2            ?? 0,
+      temp:     d.temperature_c ?? d.temperature    ?? 0,
+      humidity: d.humidity_pct  ?? d.humidity        ?? 0,
+      voc:      d.voc_index     ?? d.voc            ?? 0,
+    };
+
+    if (!isPreview) { setLiveIndicator(true); applyData(liveData); }
+  } catch (err) {
+    console.warn('Fetch failed:', err);
+  }
+}
+
+// ═══════════════════════════════════════════
+// CLOCK
+// ═══════════════════════════════════════════
+function tick() {
+  $('ts').textContent = new Date().toLocaleTimeString('en-AU', {
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  }) + ' AEST';
+}
+
+// ═══════════════════════════════════════════
+// BOOT
+// ═══════════════════════════════════════════
+setTimeout(() => {
+  document.title = CONFIG.SITE_NAME;
+  $('site-name').textContent = CONFIG.SITE_NAME;
+  $('location').textContent = CONFIG.LOCATION;
+
+  initCanvas();
+  tick();
+  setInterval(tick, 1000);
+  fetchLatest();
+  setInterval(fetchLatest, CONFIG.POLL_INTERVAL);
+  draw();
+}, 100);
+
+window.addEventListener('resize', initCanvas);
+</script>
+</body>
+</html>

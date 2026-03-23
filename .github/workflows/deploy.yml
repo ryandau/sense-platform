@@ -1,0 +1,187 @@
+name: Sense Platform CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  AWS_DEFAULT_REGION: ap-southeast-2
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "22"
+
+jobs:
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt pytest ruff
+
+      - name: Lint
+        run: ruff check backend/
+
+      - name: Run tests
+        run: pytest backend/tests/ -v
+
+
+  deploy-frontend:
+    name: Deploy Frontend
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_DEFAULT_REGION }}
+
+      - name: Sync frontend to S3
+        run: aws s3 sync frontend/ s3://sense.donohue.ai/ --delete
+
+
+  deploy-app:
+    name: Deploy Lambda
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_DEFAULT_REGION }}
+
+      - name: Package Lambda
+        run: |
+          cd backend
+          pip install -r requirements.txt -t package/ --quiet
+          cp -r app package/
+          cd package && zip -r ../lambda.zip . -x "*.pyc" -x "*/__pycache__/*"
+          echo "Package size: $(du -sh ../lambda.zip)"
+
+      - name: Deploy code to Lambda
+        run: |
+          aws lambda update-function-code \
+            --function-name sense-platform-ingest \
+            --zip-file fileb://backend/lambda.zip \
+            --no-cli-pager
+
+      - name: Wait for update
+        run: aws lambda wait function-updated --function-name sense-platform-ingest
+
+
+  diff-infrastructure:
+    name: CDK Diff
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_DEFAULT_REGION }}
+
+      - name: Install CDK
+        run: cd infrastructure && npm ci && npm install -g aws-cdk
+
+      - name: CDK Diff
+        id: diff
+        run: |
+          cd infrastructure
+          DIFF=$(cdk diff 2>&1 || true)
+          echo "diff<<EOF" >> $GITHUB_OUTPUT
+          echo "$DIFF" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Post diff as PR comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const diff = `${{ steps.diff.outputs.diff }}`;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## CDK Infrastructure Diff\n\`\`\`\n${diff}\n\`\`\``
+            });
+
+
+  deploy-infrastructure:
+    name: Deploy Infrastructure
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    environment:
+      name: production
+      url: https://node-api.donohue.ai
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_DEFAULT_REGION }}
+
+      - name: Install CDK
+        run: cd infrastructure && npm ci && npm install -g aws-cdk
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Build Lambda package for CDK
+        run: |
+          cd backend
+          pip install -r requirements.txt -t package/ --quiet
+          cp -r app package/
+
+      - name: CDK Bootstrap
+        run: cdk bootstrap aws://${{ secrets.AWS_ACCOUNT_ID }}/ap-southeast-2
+        working-directory: infrastructure
+
+      - name: CDK Deploy
+        run: cdk deploy --all --require-approval never --outputs-file cdk-outputs.json
+        working-directory: infrastructure
+
+      - name: Show outputs
+        run: cat infrastructure/cdk-outputs.json
