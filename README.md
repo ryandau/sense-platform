@@ -62,19 +62,18 @@ Backend code and frontend deploy automatically on every push to `main`.
 ## API usage
 
 ```bash
-# Get the API URL from stack outputs
+# Get the API URL and API key
 aws cloudformation describe-stacks \
   --stack-name SensePlatformStack \
   --query 'Stacks[0].Outputs[?OutputKey==`ApiUrl`].OutputValue' \
   --output text
 
-# Get your API key
 aws secretsmanager get-secret-value \
   --secret-id sense-platform/api-key \
   --query SecretString --output text
 
 # Send a reading
-curl -X POST https://<api-url>/v1/ingest \
+curl -X POST https://<api-url>/ingest \
   -H "Content-Type: application/json" \
   -H "X-API-Key: <your-api-key>" \
   -d '{
@@ -84,18 +83,15 @@ curl -X POST https://<api-url>/v1/ingest \
     "longitude": 153.03,
     "data": {"pm2_5": 8.3, "co2_ppm": 420, "temperature_c": 24.5}
   }'
-```
 
-## View the dashboard
-
-```bash
+# View the dashboard
 aws cloudformation describe-stacks \
   --stack-name SensePlatformStack \
   --query 'Stacks[0].Outputs[?OutputKey==`FrontendUrl`].OutputValue' \
   --output text
 ```
 
-Open this URL in your browser. The dashboard auto-discovers devices from the API.
+Open the frontend URL in your browser. The dashboard auto-discovers devices from the API.
 
 ## Custom domain (optional)
 
