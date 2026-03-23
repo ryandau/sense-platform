@@ -126,12 +126,20 @@ def test_ingest_success(mock_get_db):
 
     mock_conn = MagicMock()
     mock_cursor = MagicMock()
-    mock_cursor.fetchone.return_value = {"id": "abc-123"}
+    mock_cursor.fetchone.side_effect = [
+        {"id": "abc-123"},                             # readings INSERT RETURNING id
+        {"name": "Test Sensor", "timezone": "Australia/Brisbane"},  # device SELECT
+    ]
+    mock_cursor.fetchall.return_value = []              # field meta query
     mock_conn.cursor.return_value.__enter__ = lambda s: mock_cursor
     mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
     mock_conn.__enter__ = lambda s: mock_conn
     mock_conn.__exit__ = MagicMock(return_value=False)
     mock_get_db.return_value = mock_conn
+
+    # Clear field meta cache so it queries
+    mod._field_meta_cache = None
+    mod._field_meta_cache_ts = 0
 
     resp = client.post("/ingest",
         json={
@@ -147,6 +155,7 @@ def test_ingest_success(mock_get_db):
     assert body["reading_id"] == "abc-123"
     assert body["computed"]["aqi_category"] == "Good"
     assert body["computed"]["co2_status"] == "Good"
+    assert "content" in body
 
 
 @patch("backend.app.api.ingest.get_db")

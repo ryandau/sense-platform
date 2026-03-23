@@ -1,13 +1,14 @@
 """
-Tests for sense-platform ingest API — unit tests for engine and models.
+Tests for sense-platform ingest API — unit tests for engine, models, and content string.
 """
 import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
+from datetime import datetime, timezone
 from backend.app.api.ingest import (
     BreakpointEngine,
-    build_summary,
+    build_content_string,
     ReadingPayload,
 )
 import backend.app.api.ingest as mod
@@ -50,6 +51,8 @@ def _compute(data):
     return engine.compute("air_quality", data, None)
 
 
+# ── Breakpoint Engine ──
+
 def test_aqi_good():
     result = _compute({"pm2_5": 6.0})
     assert result["aqi"] <= 50
@@ -88,6 +91,8 @@ def test_empty_data_no_crash():
     assert result == {}
 
 
+# ── Payload Validation ──
+
 def test_payload_country_uppercase():
     payload = ReadingPayload(
         device_id="test-001",
@@ -105,16 +110,75 @@ def test_payload_recorded_at_defaults():
     assert payload.recorded_at is not None
 
 
-def test_summary_builds():
+# ── Content String Builder ──
+
+FIELD_META = {
+    "air_quality": {
+        "pm2_5": {"label": "PM2.5", "unit": "μg/m³"},
+        "co2_ppm": {"label": "CO2", "unit": "ppm"},
+        "temperature_c": {"label": "Temperature", "unit": "°C"},
+    }
+}
+
+
+def test_content_string_full():
     payload = ReadingPayload(
-        device_id="faker-aq-brisbane",
+        device_id="sensor-001",
         type_slug="air_quality",
+        recorded_at=datetime(2026, 3, 21, 4, 35, tzinfo=timezone.utc),
         location_label="Annerley, Brisbane",
         country_code="AU",
-        data={"pm2_5": 6.4, "co2_ppm": 520}
+        latitude=-27.47,
+        longitude=153.03,
+        data={"pm2_5": 6.4, "co2_ppm": 520},
     )
-    computed = _compute(payload.data)
-    summary = build_summary(payload, computed)
-    assert "faker-aq-brisbane" in summary
-    assert "Annerley" in summary
-    assert "pm2_5" in summary
+    computed = {"aqi": 27, "aqi_category": "Good", "co2_status": "Good"}
+    content = build_content_string(payload, computed, "Office Sensor", "Australia/Brisbane", FIELD_META)
+    assert "WHO: Office Sensor" in content
+    assert "Annerley, Brisbane" in content
+    assert "PM2.5: 6.4 μg/m³" in content
+    assert "CO2: 520 ppm" in content
+    assert "Aqi: 27 (Good)" in content
+    assert "2:35 PM AEST" in content
+
+
+def test_content_string_minimal():
+    payload = ReadingPayload(
+        device_id="sensor-001",
+        data={"pm2_5": 10.0},
+    )
+    content = build_content_string(payload, None, None, "Australia/Brisbane", None)
+    assert "WHO: sensor-001" in content
+    assert "WHAT:" in content
+    assert "WHY:" not in content
+
+
+def test_content_string_skips_nulls():
+    payload = ReadingPayload(
+        device_id="sensor-001",
+        type_slug="air_quality",
+        data={"pm2_5": 10.0, "co2_ppm": None},
+    )
+    content = build_content_string(payload, None, None, "Australia/Brisbane", FIELD_META)
+    assert "PM2.5: 10.0" in content
+    assert "CO2" not in content
+
+
+def test_content_string_timezone_conversion():
+    payload = ReadingPayload(
+        device_id="sensor-001",
+        recorded_at=datetime(2026, 3, 21, 0, 0, tzinfo=timezone.utc),
+        data={"pm2_5": 5.0},
+    )
+    content = build_content_string(payload, None, None, "Australia/Brisbane", None)
+    assert "10:00 AM AEST" in content
+
+
+def test_content_string_invalid_timezone():
+    payload = ReadingPayload(
+        device_id="sensor-001",
+        data={"pm2_5": 5.0},
+    )
+    content = build_content_string(payload, None, None, "Not/A/Timezone", None)
+    assert "WHO: sensor-001" in content
+    assert "UTC" in content

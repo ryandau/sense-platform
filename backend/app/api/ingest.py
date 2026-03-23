@@ -6,6 +6,7 @@ Deployed as AWS Lambda via Mangum.
 
 from datetime import datetime, timezone
 from typing import Optional, Any, Protocol
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import json
 import os
 import time
@@ -120,7 +121,7 @@ class BreakpointEngine:
                 SELECT type_slug, input_field, output_field,
                        bp_low, bp_high, idx_low, idx_high,
                        category, interpolate
-                FROM conversion_breakpoints
+                FROM breakpoints
                 ORDER BY type_slug, input_field, sort_order
             """)
             rows = cur.fetchall()
@@ -170,23 +171,92 @@ def enrich(payload: ReadingPayload, conn) -> dict:
     return computed if computed else None
 
 
-def build_summary(payload: ReadingPayload, computed: dict) -> str:
-    parts = [
-        f"Device {payload.device_id} ({payload.type_slug or 'unknown type'})",
-        f"recorded at {payload.recorded_at.isoformat()}",
-    ]
+_field_meta_cache: dict | None = None
+_field_meta_cache_ts: float = 0
+
+
+def _load_field_meta(conn) -> dict:
+    global _field_meta_cache, _field_meta_cache_ts
+    now = time.time()
+    if _field_meta_cache and (now - _field_meta_cache_ts) < _CACHE_TTL:
+        return _field_meta_cache
+
+    with conn.cursor() as cur:
+        cur.execute("SELECT slug, fields FROM device_types")
+        rows = cur.fetchall()
+
+    _field_meta_cache = {row["slug"]: row["fields"] for row in rows}
+    _field_meta_cache_ts = now
+    return _field_meta_cache
+
+
+def _format_local_time(dt: datetime, tz_name: str) -> str:
+    try:
+        tz = ZoneInfo(tz_name)
+    except (ZoneInfoNotFoundError, KeyError):
+        tz = ZoneInfo("UTC")
+    local = dt.astimezone(tz)
+    return local.strftime("%A %-d %B %Y at %-I:%M %p %Z")
+
+
+def build_content_string(
+    payload: ReadingPayload,
+    computed: dict | None,
+    device_name: str | None,
+    device_timezone: str,
+    field_meta: dict | None,
+) -> str:
+    parts = []
+
+    # WHO
+    who = device_name or payload.device_id
+    if payload.type_slug:
+        who += f", {payload.type_slug.replace('_', ' ')} sensor"
+    parts.append(f"WHO: {who}.")
+
+    # WHERE
+    where_parts = []
     if payload.location_label:
-        parts.append(f"in {payload.location_label}")
+        where_parts.append(payload.location_label)
     if payload.country_code:
-        parts.append(f"({payload.country_code})")
-    parts.append("reported:")
+        where_parts.append(f"({payload.country_code})")
+    if payload.latitude is not None and payload.longitude is not None:
+        where_parts.append(f"Coordinates: {payload.latitude}, {payload.longitude}.")
+    if where_parts:
+        parts.append("WHERE: " + " ".join(where_parts))
+
+    # WHEN
+    time_str = _format_local_time(payload.recorded_at, device_timezone)
+    parts.append(f"WHEN: {time_str}.")
+
+    # WHAT — use field metadata for labels/units if available
+    fields = (field_meta or {}).get(payload.type_slug, {}) if payload.type_slug else {}
+    what = []
     for key, value in payload.data.items():
-        parts.append(f"{key}={value}")
+        if value is None:
+            continue
+        meta = fields.get(key, {})
+        label = meta.get("label", key)
+        unit = meta.get("unit", "")
+        what.append(f"{label}: {value}{' ' + unit if unit else ''}")
+    if what:
+        parts.append("WHAT: " + ", ".join(what) + ".")
+
+    # WHY — computed values
     if computed:
-        parts.append("computed:")
+        why = []
         for key, value in computed.items():
-            parts.append(f"{key}={value}")
-    return " ".join(parts)
+            if key.endswith("_category"):
+                continue
+            label = key.replace("_", " ").title()
+            if f"{key}_category" in computed:
+                why.append(f"{label}: {value} ({computed[f'{key}_category']})")
+            else:
+                why.append(f"{label}: {value}")
+        if why:
+            parts.append("WHY: " + ", ".join(why) + ".")
+
+    return "\n".join(parts)
 
 
 @app.post("/ingest", status_code=201)
@@ -194,6 +264,7 @@ def ingest_reading(payload: ReadingPayload, api_key: str = Security(verify_api_k
     try:
         conn = get_db()
         computed = enrich(payload, conn)
+        field_meta = _load_field_meta(conn)
         with conn:
             with conn.cursor() as cur:
                 cur.execute("""
@@ -219,10 +290,26 @@ def ingest_reading(payload: ReadingPayload, api_key: str = Security(verify_api_k
                     Json(computed) if computed else None,
                 ))
                 reading_id = cur.fetchone()["id"]
+
+                cur.execute(
+                    "SELECT name, timezone FROM devices WHERE device_id = %s",
+                    (payload.device_id,)
+                )
+                device_row = cur.fetchone()
+                device_name = device_row["name"] if device_row else None
+                device_tz = (device_row["timezone"] if device_row else None) or "Australia/Brisbane"
+
+                content = build_content_string(payload, computed, device_name, device_tz, field_meta)
+                cur.execute("""
+                    INSERT INTO reading_embeddings (reading_id, content, template_version)
+                    VALUES (%s, %s, 'v1')
+                """, (reading_id, content))
+
         conn.close()
         response = {"status": "accepted", "reading_id": str(reading_id)}
         if computed:
             response["computed"] = computed
+        response["content"] = content
         return response
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

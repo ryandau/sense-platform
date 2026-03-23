@@ -14,7 +14,7 @@ STACK="SensePlatformStack"
 REGION="ap-southeast-2"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-FAKER_DIR="$PROJECT_DIR/faker"
+FAKER_DIR="$SCRIPT_DIR/faker"
 PID_FILE="$SCRIPT_DIR/.faker.pid"
 
 get_output() {

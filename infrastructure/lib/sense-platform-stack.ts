@@ -140,6 +140,7 @@ export class SensePlatformStack extends cdk.Stack {
       securityGroups: [lambdaSg],
       environment: {
         DB_SECRET_ARN: db.secret!.secretArn,
+        DEPLOY_TIME: new Date().toISOString(),
       },
     });
 

@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS devices (
     name         VARCHAR(128),
     firmware     VARCHAR(64),
     metadata     JSONB,
+    timezone     VARCHAR(64) DEFAULT 'Australia/Brisbane',
     created_at   TIMESTAMPTZ DEFAULT NOW(),
     last_seen_at TIMESTAMPTZ
 );
@@ -54,36 +55,12 @@ CREATE INDEX IF NOT EXISTS idx_readings_location ON readings(country_code, locat
 CREATE INDEX IF NOT EXISTS idx_readings_data ON readings USING GIN(data);
 
 CREATE TABLE IF NOT EXISTS reading_embeddings (
-    id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    reading_id  UUID NOT NULL REFERENCES readings(id) ON DELETE CASCADE,
-    content     TEXT NOT NULL,
-    embedding   vector(1536),
-    created_at  TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS knowledge_base (
-    id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    type_slug   VARCHAR(64),
-    category    VARCHAR(64) NOT NULL,
-    title       VARCHAR(256) NOT NULL,
-    content     TEXT NOT NULL,
-    embedding   vector(1536),
-    metadata    JSONB,
-    created_at  TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS alerts (
-    id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    reading_id  UUID REFERENCES readings(id),
-    device_id   VARCHAR(64) REFERENCES devices(device_id),
-    type_slug   VARCHAR(64),
-    field       VARCHAR(64),
-    value       DECIMAL(12,4),
-    threshold   DECIMAL(12,4),
-    severity    VARCHAR(16),
-    message     TEXT,
-    acknowledged_at TIMESTAMPTZ,
-    created_at  TIMESTAMPTZ DEFAULT NOW()
+    id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    reading_id        UUID NOT NULL REFERENCES readings(id) ON DELETE CASCADE,
+    content           TEXT NOT NULL,
+    embedding         vector(1536),
+    template_version  VARCHAR(16) DEFAULT 'v1',
+    created_at        TIMESTAMPTZ DEFAULT NOW()
 );
 
 INSERT INTO device_types (slug, name, description, fields) VALUES
@@ -112,7 +89,7 @@ INSERT INTO device_types (slug, name, description, fields) VALUES
  '{"temperature_c":{"unit":"°C","label":"Temperature","range":[-40,85]},"humidity_pct":{"unit":"%RH","label":"Humidity","range":[0,100]},"pressure_hpa":{"unit":"hPa","label":"Pressure","range":[300,1100]},"dew_point_c":{"unit":"°C","label":"Dew Point","range":[-40,60]}}'::jsonb)
 ON CONFLICT (slug) DO NOTHING;
 
-CREATE TABLE IF NOT EXISTS conversion_breakpoints (
+CREATE TABLE IF NOT EXISTS breakpoints (
     id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     type_slug       VARCHAR(64) NOT NULL REFERENCES device_types(slug),
     input_field     VARCHAR(64) NOT NULL,
@@ -128,11 +105,11 @@ CREATE TABLE IF NOT EXISTS conversion_breakpoints (
     UNIQUE (type_slug, input_field, sort_order)
 );
 
-CREATE INDEX IF NOT EXISTS idx_conv_bp_lookup
-    ON conversion_breakpoints(type_slug, input_field, sort_order);
+CREATE INDEX IF NOT EXISTS idx_breakpoints_lookup
+    ON breakpoints(type_slug, input_field, sort_order);
 
 -- EPA PM2.5 AQI breakpoints
-INSERT INTO conversion_breakpoints (type_slug, input_field, output_field, bp_low, bp_high, idx_low, idx_high, category, interpolate, sort_order) VALUES
+INSERT INTO breakpoints (type_slug, input_field, output_field, bp_low, bp_high, idx_low, idx_high, category, interpolate, sort_order) VALUES
 ('air_quality', 'pm2_5', 'aqi', 0,     12.0,   0,   50,  'Good',                          TRUE, 1),
 ('air_quality', 'pm2_5', 'aqi', 12.1,  35.4,   51,  100, 'Moderate',                      TRUE, 2),
 ('air_quality', 'pm2_5', 'aqi', 35.5,  55.4,   101, 150, 'Unhealthy for Sensitive Groups', TRUE, 3),
@@ -142,7 +119,7 @@ INSERT INTO conversion_breakpoints (type_slug, input_field, output_field, bp_low
 ON CONFLICT DO NOTHING;
 
 -- Australian NEPM PM2.5 categories (1-hour, QLD/NSW standard)
-INSERT INTO conversion_breakpoints (type_slug, input_field, output_field, bp_low, bp_high, idx_low, idx_high, category, interpolate, sort_order) VALUES
+INSERT INTO breakpoints (type_slug, input_field, output_field, bp_low, bp_high, idx_low, idx_high, category, interpolate, sort_order) VALUES
 ('air_quality', 'pm2_5', 'aqi_au_category', 0,     24.9999, NULL, NULL, 'Good',            FALSE, 1),
 ('air_quality', 'pm2_5', 'aqi_au_category', 25,    49.9999, NULL, NULL, 'Fair',            FALSE, 2),
 ('air_quality', 'pm2_5', 'aqi_au_category', 50,    99.9999, NULL, NULL, 'Poor',            FALSE, 3),
@@ -150,8 +127,8 @@ INSERT INTO conversion_breakpoints (type_slug, input_field, output_field, bp_low
 ('air_quality', 'pm2_5', 'aqi_au_category', 300,   999.9999, NULL, NULL, 'Extremely Poor',  FALSE, 5)
 ON CONFLICT DO NOTHING;
 
--- CO2 indoor air quality thresholds
-INSERT INTO conversion_breakpoints (type_slug, input_field, output_field, bp_low, bp_high, idx_low, idx_high, category, interpolate, sort_order) VALUES
+-- CO2 indoor air quality breakpoints
+INSERT INTO breakpoints (type_slug, input_field, output_field, bp_low, bp_high, idx_low, idx_high, category, interpolate, sort_order) VALUES
 ('air_quality', 'co2_ppm', 'co2_status', 0,    799.9999,  NULL, NULL, 'Good',       FALSE, 1),
 ('air_quality', 'co2_ppm', 'co2_status', 800,  999.9999,  NULL, NULL, 'Acceptable', FALSE, 2),
 ('air_quality', 'co2_ppm', 'co2_status', 1000, 1499.9999, NULL, NULL, 'Poor',       FALSE, 3),
@@ -159,20 +136,6 @@ INSERT INTO conversion_breakpoints (type_slug, input_field, output_field, bp_low
 ('air_quality', 'co2_ppm', 'co2_status', 2000, 99999,     NULL, NULL, 'Dangerous',  FALSE, 5)
 ON CONFLICT DO NOTHING;
 
-INSERT INTO knowledge_base (type_slug, category, title, content) VALUES
-('air_quality', 'thresholds', 'WHO PM2.5 Guidelines',
- 'WHO Air Quality Guidelines (2021): PM2.5 annual mean should not exceed 5 μg/m³. 24-hour mean should not exceed 15 μg/m³. Levels above 35 μg/m³ are unhealthy for sensitive groups. Levels above 55 μg/m³ are unhealthy for all. Levels above 150 μg/m³ are very unhealthy. Levels above 250 μg/m³ are hazardous.')
-ON CONFLICT DO NOTHING;
-
-INSERT INTO knowledge_base (type_slug, category, title, content) VALUES
-('air_quality', 'thresholds', 'CO2 Indoor Air Quality Guidelines',
- 'CO2 guidelines: Below 800 ppm good. 800-1000 ppm acceptable. 1000-1500 ppm poor, ventilate. 1500-2000 ppm very poor, headaches likely. Above 2000 ppm dangerous, evacuate. Outdoor baseline ~420 ppm.')
-ON CONFLICT DO NOTHING;
-
-INSERT INTO knowledge_base (type_slug, category, title, content) VALUES
-('air_quality', 'recommendations', 'Air Filter Selection Guide',
- 'PM2.5 and particles: True HEPA filter. VOCs and gases: Activated carbon required. NO2 and SO2: Carbon with potassium permanganate. Combined pollution: HEPA plus activated carbon. Replace HEPA every 6-12 months. Replace carbon every 3-6 months in high VOC environments.')
-ON CONFLICT DO NOTHING;
 """
 
 

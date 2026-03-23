@@ -4,7 +4,7 @@
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![Ruff](https://img.shields.io/badge/code_style-Ruff-D7FF64?logo=ruff&logoColor=black)
 
-Sensor-agnostic IoT data ingestion platform. Accepts readings from any device type (air quality, soil, water, noise, environment), stores them in PostgreSQL with pgvector, and serves a live visualisation frontend.
+Sensor-agnostic IoT platform. Ingests readings, computes derived metrics via EPA breakpoints, and stores RAG-ready content strings in PostgreSQL with pgvector. Deployed on AWS with a live dashboard.
 
 ## Architecture
 
@@ -31,7 +31,8 @@ sense-platform/
 │   └── index.html            Single-page visualisation dashboard
 ├── scripts/                Helper scripts
 │   ├── bastion.sh            Bastion start/stop/creds/status
-│   └── faker.sh              Sensor data simulator
+│   ├── faker.sh              Sensor data simulator
+│   └── faker/                Faker Python source and devices
 ├── infrastructure/         AWS CDK stack
 │   ├── lib/                  Stack definition
 │   ├── lambda/               Migration Lambda source
@@ -92,13 +93,15 @@ aws cloudformation describe-stacks \
   --output text
 ```
 
-Open this URL in your browser. The dashboard auto-discovers available devices from the API — no manual configuration needed.
+Open this URL in your browser. The dashboard auto-discovers devices from the API.
 
-### Custom domain (optional)
+## Custom domain (optional)
 
-Set `frontendDomain` in `cdk.json` to your domain (this names the S3 bucket, configures CORS, and sets the display name), redeploy infrastructure, then point a CNAME to the S3 website URL from the stack outputs. DNS only — no proxy (e.g. Cloudflare proxy off).
+1. Set `frontendDomain` in `cdk.json` to your domain
+2. Redeploy infrastructure
+3. CNAME your domain to the `FrontendUrl` from stack outputs (DNS only, no proxy)
 
-### Endpoints
+## Endpoints
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
@@ -108,16 +111,6 @@ Set `frontendDomain` in `cdk.json` to your domain (this names the S3 bucket, con
 | GET | `/devices/{id}/latest` | None | Latest reading for a device |
 | GET | `/devices/{id}/history` | None | Reading history (limit=100) |
 | GET | `/types` | None | List supported device types |
-
-## Supported device types
-
-| Slug | Name | Key fields |
-|------|------|------------|
-| `air_quality` | Air Quality Monitor | pm2_5, pm10_0, co2_ppm, voc_index, temperature_c, humidity_pct |
-| `soil` | Soil Sensor | moisture_pct, temperature_c, ph, nitrogen_ppm |
-| `water_quality` | Water Quality Monitor | ph, turbidity_ntu, dissolved_o2, temperature_c |
-| `noise` | Noise Monitor | db_avg, db_peak, db_min |
-| `environment` | Environment Monitor | temperature_c, humidity_pct, pressure_hpa |
 
 ## Database access
 
