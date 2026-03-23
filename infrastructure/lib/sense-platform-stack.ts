@@ -93,6 +93,10 @@ export class SensePlatformStack extends cdk.Stack {
       storageType: rds.StorageType.GP2,
       multiAz: false,
       publiclyAccessible: false,
+      parameterGroup: new rds.ParameterGroup(this, "SenseDbParams", {
+        engine: rds.DatabaseInstanceEngine.postgres({ version: rds.PostgresEngineVersion.VER_17 }),
+        parameters: { "rds.force_ssl": "1" },
+      }),
       backupRetention: cdk.Duration.days(1),
       deletionProtection: false,
       removalPolicy: cdk.RemovalPolicy.RETAIN,

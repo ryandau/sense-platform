@@ -45,7 +45,6 @@ sense-platform/
 - AWS account with CDK bootstrapped
 - Node.js 22+
 - [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/install-cliv2.html) and [Session Manager plugin](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html) (for database access)
-- Custom domain (optional)
 
 ## Deploy
 

@@ -72,6 +72,7 @@ def get_db():
         dbname=secret.get("dbname", "sense"),
         user=secret["username"],
         password=secret["password"],
+        sslmode="require",
         cursor_factory=RealDictCursor
     )
 

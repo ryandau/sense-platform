@@ -158,6 +158,7 @@ def handler(event, context):
         dbname=secret.get("dbname", "sense"),
         user=secret["username"],
         password=secret["password"],
+        sslmode="require",
     )
     conn.autocommit = True
     with conn.cursor() as cur:
