@@ -95,9 +95,10 @@ Open the frontend URL in your browser. The dashboard auto-discovers devices from
 
 ## Custom domain (optional)
 
-1. Set `frontendDomain` in `cdk.json` to your domain
-2. Redeploy infrastructure
-3. CNAME your domain to the `FrontendUrl` from stack outputs (DNS only, no proxy)
+1. Edit `frontendDomain` in [`infrastructure/cdk.json`](infrastructure/cdk.json) — replace the default with your domain
+2. Redeploy infrastructure (**Actions** > **Run workflow**)
+3. Create a CNAME DNS record pointing your domain to the `FrontendUrl` from stack outputs
+4. Set your DNS provider to **DNS only** (no proxy) — S3 static hosting requires direct resolution
 
 ## Endpoints
 
