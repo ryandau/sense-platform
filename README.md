@@ -49,7 +49,9 @@ sense-platform/
 
 ## Deploy
 
-Add repository secrets (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_ACCOUNT_ID`) then trigger via GitHub Actions:
+See the [setup guide](docs/setup.md) for detailed IAM and secrets configuration.
+
+Once secrets are configured, trigger via GitHub Actions:
 
 **Actions** > **Sense Platform CI/CD** > **Run workflow**
 
