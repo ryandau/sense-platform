@@ -22,9 +22,13 @@ from psycopg2.extras import RealDictCursor, Json
 app = FastAPI(title="Sense Platform Ingest API", version="1.0.0")
 
 _frontend_domain = os.environ.get("FRONTEND_DOMAIN", "localhost")
+_frontend_bucket_url = os.environ.get("FRONTEND_BUCKET_URL", "")
+_cors_origins = [f"https://{_frontend_domain}", f"http://{_frontend_domain}"]
+if _frontend_bucket_url:
+    _cors_origins.append(_frontend_bucket_url)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[f"https://{_frontend_domain}", f"http://{_frontend_domain}"],
+    allow_origins=_cors_origins,
     allow_methods=["*"],
     allow_headers=["Content-Type", "X-API-Key"],
 )

@@ -173,6 +173,7 @@ export class SensePlatformStack extends cdk.Stack {
         DB_SECRET_ARN: db.secret!.secretArn,
         API_KEY_SECRET_ARN: apiKeySecret.secretArn,
         FRONTEND_DOMAIN: frontendDomain,
+        FRONTEND_BUCKET_URL: `http://${frontendDomain}.s3-website-${this.region}.amazonaws.com`,
       },
     });
 
@@ -214,6 +215,7 @@ export class SensePlatformStack extends cdk.Stack {
         allowOrigins: [
           `https://${frontendDomain}`,
           `http://${frontendDomain}`,
+          `http://${frontendDomain}.s3-website-${this.region}.amazonaws.com`,
         ],
         allowMethods: apigateway.Cors.ALL_METHODS,
         allowHeaders: ["Content-Type", "X-API-Key"],
@@ -284,8 +286,9 @@ export class SensePlatformStack extends cdk.Stack {
 
     new cdk.CfnOutput(this, "FrontendUrl", {
       value: frontendBucket.bucketWebsiteUrl,
-      description: "S3 static website URL (Cloudflare points sense.donohue.ai here)",
+      description: "S3 static website URL",
     });
+
 
     new cdk.CfnOutput(this, "LambdaFunctionName", {
       value: ingestFn.functionName,

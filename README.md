@@ -1,25 +1,23 @@
 # Sense Platform
 
 [![CI/CD](https://github.com/ryandau/sense-platform/actions/workflows/deploy.yml/badge.svg)](https://github.com/ryandau/sense-platform/actions/workflows/deploy.yml)
+![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
+![Ruff](https://img.shields.io/badge/code_style-Ruff-D7FF64?logo=ruff&logoColor=black)
 
 Sensor-agnostic IoT data ingestion platform. Accepts readings from any device type (air quality, soil, water, noise, environment), stores them in PostgreSQL with pgvector, and serves a live visualisation frontend.
-
-The same endpoint accepts air quality monitors, soil sensors, water quality monitors, noise meters — anything that can make an HTTP request.
-
-Stack: FastAPI, AWS Lambda, API Gateway, RDS PostgreSQL, pgvector, S3, AWS CDK, GitHub Actions
 
 ## Architecture
 
 ```mermaid
-flowchart TD
-  sensor[Sensor Device] -->|POST /ingest · X-API-Key| apigw[API Gateway]
-  frontend[S3 Static Frontend] -.->|GET /devices/.../latest| apigw
-  apigw --> lambda[Ingest Lambda · FastAPI]
-  lambda --> rds[(RDS PostgreSQL · pgvector)]
-  bastion[Bastion Host · SSM] -->|port-forward :5432| rds
+flowchart LR
+  sensor[Sensor Device] -->|POST /ingest| apigw[API Gateway]
+  apigw --> lambda[Lambda · FastAPI]
+  lambda --> rds[(PostgreSQL)]
+  browser[Browser] -.->|loads page| s3[S3 Frontend]
+  browser -->|GET /latest| apigw
 ```
 
-All infrastructure is defined in CDK (TypeScript). Secrets are managed via AWS Secrets Manager — no plaintext credentials in environment variables or CI. The database sits in isolated subnets with no public access. SSL is enforced on all database connections.
+All infrastructure is defined in CDK (TypeScript). The database sits in isolated VPC subnets with no public access. Secrets are managed via AWS Secrets Manager — no plaintext credentials in environment variables or CI. SSL is enforced on all database connections.
 
 ## Repo structure
 
@@ -44,14 +42,13 @@ sense-platform/
 ## Prerequisites
 
 - AWS account with CDK bootstrapped
-- GitHub repository secrets: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_ACCOUNT_ID`
 - Node.js 22+
 - [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/install-cliv2.html) and [Session Manager plugin](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html) (for database access)
-- Cloudflare DNS (optional, for custom domain)
+- Custom domain (optional)
 
 ## Deploy
 
-Infrastructure deploys via GitHub Actions (manual trigger):
+Add repository secrets (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_ACCOUNT_ID`) then trigger via GitHub Actions:
 
 **Actions** > **Sense Platform CI/CD** > **Run workflow**
 
@@ -62,6 +59,12 @@ Backend code and frontend deploy automatically on every push to `main`.
 ## API usage
 
 ```bash
+# Get the API URL from stack outputs
+aws cloudformation describe-stacks \
+  --stack-name SensePlatformStack \
+  --query 'Stacks[0].Outputs[?OutputKey==`ApiUrl`].OutputValue' \
+  --output text
+
 # Get your API key
 aws secretsmanager get-secret-value \
   --secret-id sense-platform/api-key \
@@ -79,6 +82,21 @@ curl -X POST https://<api-url>/v1/ingest \
     "data": {"pm2_5": 8.3, "co2_ppm": 420, "temperature_c": 24.5}
   }'
 ```
+
+## View the dashboard
+
+```bash
+aws cloudformation describe-stacks \
+  --stack-name SensePlatformStack \
+  --query 'Stacks[0].Outputs[?OutputKey==`FrontendUrl`].OutputValue' \
+  --output text
+```
+
+Open this URL in your browser. The dashboard auto-discovers available devices from the API — no manual configuration needed.
+
+### Custom domain (optional)
+
+Set `frontendDomain` in `cdk.json` to your domain (this names the S3 bucket, configures CORS, and sets the display name), redeploy infrastructure, then point a CNAME to the S3 website URL from the stack outputs. DNS only — no proxy (e.g. Cloudflare proxy off).
 
 ### Endpoints
 
@@ -113,21 +131,6 @@ The RDS instance is in an isolated subnet. A helper script handles bastion start
 ```
 
 Connect your database client (e.g. TablePlus) to `localhost:5432` using the credentials from `creds`.
-
-## Frontend configuration
-
-Edit the `CONFIG` block in `frontend/index.html`:
-
-```javascript
-const CONFIG = {
-  SITE_NAME: '<your-domain>',
-  LOCATION: '<your-location>',
-  API_URL: 'https://<api-url>/v1/devices/<device-id>/latest',
-  POLL_INTERVAL: 5000,
-};
-```
-
-Changes to `frontend/` deploy automatically on push to `main`.
 
 ## Running tests
 

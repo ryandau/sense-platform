@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <link id="favicon" rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='12' fill='%23555'/></svg>">
   <title>Sense Platform</title>
+  <script src="config.js"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/cormorant-garamond@5/400.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/outfit@5/400.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/outfit@5/500.css">
@@ -237,9 +238,8 @@
 // CONFIG
 // ═══════════════════════════════════════════
 const CONFIG = {
-  SITE_NAME: 'sense.donohue.ai',
-  LOCATION: 'Annerley \u00b7 Brisbane',
-  API_URL: 'https://k49cf9ym46.execute-api.ap-southeast-2.amazonaws.com/v1/devices/faker-aq-brisbane/latest',
+  SITE_NAME: (window.SENSE_CONFIG && window.SENSE_CONFIG.SITE_NAME) || 'Sense Platform',
+  API_BASE: (window.SENSE_CONFIG && window.SENSE_CONFIG.API_BASE_URL) || '',
   POLL_INTERVAL: 5000,
 };
 
@@ -455,8 +455,10 @@ function applyData(data) {
   acatEl.textContent = st.label;
   ldotEl.style.background = st.dot;
 
-  $('location').textContent = CONFIG.LOCATION;
-  $('loc-row').style.opacity = '1';
+  if (data.location) {
+    $('location').textContent = data.location;
+    $('loc-row').style.opacity = '1';
+  }
 
   STAT_FIELDS.forEach(f => {
     statEls[f.id].textContent = f.format(data[f.id] ?? 0);
@@ -539,9 +541,21 @@ liveTab.addEventListener('click', setLiveMode);
 // ═══════════════════════════════════════════
 let lastFetchOk = null;
 let failCount = 0;
+let deviceUrl = null;
+
+async function discoverDevice() {
+  if (!CONFIG.API_BASE) return null;
+  try {
+    const res = await fetch(CONFIG.API_BASE + 'devices', { headers: { 'Accept': 'application/json' } });
+    if (!res.ok) return null;
+    const devices = await res.json();
+    if (devices.length > 0) return CONFIG.API_BASE + 'devices/' + devices[0].device_id + '/latest';
+  } catch (e) { console.warn('Device discovery failed:', e); }
+  return null;
+}
 
 async function fetchLatest() {
-  if (!CONFIG.API_URL) {
+  if (!CONFIG.API_BASE) {
     setLiveIndicator(false);
     acatEl.textContent = '\u2013';
     acatEl.classList.remove('pulse');
@@ -550,8 +564,13 @@ async function fetchLatest() {
     return;
   }
 
+  if (!deviceUrl) {
+    deviceUrl = await discoverDevice();
+    if (!deviceUrl) return;
+  }
+
   try {
-    const res = await fetch(CONFIG.API_URL, { headers: { 'Accept': 'application/json' } });
+    const res = await fetch(deviceUrl, { headers: { 'Accept': 'application/json' } });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const json = await res.json();
 
@@ -565,6 +584,7 @@ async function fetchLatest() {
       temp:     d.temperature_c ?? d.temperature    ?? 0,
       humidity: d.humidity_pct  ?? d.humidity        ?? 0,
       voc:      d.voc_index     ?? d.voc            ?? 0,
+      location: json.location_label                 ?? null,
     };
 
     failCount = 0;
@@ -605,7 +625,6 @@ function tick() {
 setTimeout(() => {
   document.title = CONFIG.SITE_NAME;
   $('site-name').textContent = CONFIG.SITE_NAME;
-  $('location').textContent = CONFIG.LOCATION;
 
   initCanvas();
   tick();

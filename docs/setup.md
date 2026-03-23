@@ -84,14 +84,13 @@ Edit the `CONFIG` block in `frontend/index.html`:
 
 ```javascript
 const CONFIG = {
-  SITE_NAME: '<your-domain>',
-  LOCATION: '<your-location>',
-  API_URL: 'https://<api-url>/v1/devices/<device-id>/latest',
+  SITE_NAME: 'sense.donohue.ai',                    // Matches frontendDomain in cdk.json
+  API_URL: 'https://<api-url>/v1/devices/<id>/latest', // From stack outputs
   POLL_INTERVAL: 5000,
 };
 ```
 
-The API URL comes from stack outputs. The device ID is created when your first reading is ingested.
+The API URL comes from stack outputs. The device ID is created when your first reading is ingested. Location is read from the API response automatically.
 
 ## 6. Get Your API Key
 
