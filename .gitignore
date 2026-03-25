@@ -46,3 +46,7 @@ logs/
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Firmware
+firmware/airq/.pio/
+firmware/airq/data/db.json

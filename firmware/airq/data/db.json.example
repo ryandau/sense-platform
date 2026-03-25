@@ -1,0 +1,30 @@
+{
+    "config": {
+        "factory_state": false,
+        "wifi": {
+            "ssid": "YOUR_WIFI_SSID",
+            "password": "YOUR_WIFI_PASSWORD"
+        },
+        "rtc": {
+            "sleep_interval": 60
+        },
+        "ntp": {
+            "server_0": "pool.ntp.org",
+            "server_1": "time.nist.gov",
+            "tz": "GMT+10"
+        },
+        "sense": {
+            "endpoint": "https://YOUR_API_GATEWAY_URL/v1",
+            "api_key": "YOUR_API_KEY",
+            "device_id": "airq-001",
+            "latitude": 0,
+            "longitude": 0,
+            "location_label": "",
+            "country_code": ""
+        },
+        "buzzer": {
+            "mute": false
+        },
+        "nickname": "AirQ"
+    }
+}
