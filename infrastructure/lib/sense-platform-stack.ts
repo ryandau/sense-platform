@@ -19,14 +19,21 @@ export class SensePlatformStack extends cdk.Stack {
     // -----------------------------------------
     // VPC — private network for Lambda + RDS
     // -----------------------------------------
+    // NAT instance — t4g.nano (~$3/month) gives Lambda internet access
+    // for embedding APIs while keeping RDS in private subnets
+    const natProvider = ec2.NatProvider.instanceV2({
+      instanceType: ec2.InstanceType.of(ec2.InstanceClass.T4G, ec2.InstanceSize.NANO),
+    });
+
     const vpc = new ec2.Vpc(this, "SenseVpc", {
       vpcName: "sense-platform-vpc",
       maxAzs: 2,
-      natGateways: 0,
+      natGateways: 1,
+      natGatewayProvider: natProvider,
       subnetConfiguration: [
         {
           name: "isolated",
-          subnetType: ec2.SubnetType.PRIVATE_ISOLATED,
+          subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
           cidrMask: 24,
         },
         {
@@ -60,15 +67,8 @@ export class SensePlatformStack extends cdk.Stack {
       "Allow Lambda to connect to PostgreSQL"
     );
 
-    // -----------------------------------------
-    // VPC Endpoint — Secrets Manager
-    // Lambdas in isolated subnets need this to
-    // read secrets without internet access
-    // -----------------------------------------
-    vpc.addInterfaceEndpoint("SecretsManagerEndpoint", {
-      service: ec2.InterfaceVpcEndpointAwsService.SECRETS_MANAGER,
-      subnets: { subnetType: ec2.SubnetType.PRIVATE_ISOLATED },
-    });
+    // VPC Endpoint for Secrets Manager removed — NAT instance provides
+    // internet access, saving ~$14/month on interface endpoint costs.
 
     // -----------------------------------------
     // RDS — PostgreSQL with pgvector
@@ -85,7 +85,7 @@ export class SensePlatformStack extends cdk.Stack {
         ec2.InstanceSize.MICRO
       ),
       vpc,
-      vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_ISOLATED },
+      vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
       securityGroups: [rdsSg],
       databaseName: "sense",
       credentials: rds.Credentials.fromGeneratedSecret("sense_app"),
@@ -140,7 +140,7 @@ export class SensePlatformStack extends cdk.Stack {
       timeout: cdk.Duration.minutes(5),
       memorySize: 256,
       vpc,
-      vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_ISOLATED },
+      vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
       securityGroups: [lambdaSg],
       environment: {
         DB_SECRET_ARN: db.secret!.secretArn,
@@ -158,6 +158,67 @@ export class SensePlatformStack extends cdk.Stack {
     });
 
     // -----------------------------------------
+    // Anthropic API Key — stored in Secrets Manager
+    // Create manually: aws secretsmanager create-secret --name sense-platform/anthropic-key --secret-string "sk-ant-..."
+    // -----------------------------------------
+    const anthropicKeySecret = secretsmanager.Secret.fromSecretNameV2(
+      this, "AnthropicKeySecret", "sense-platform/anthropic-key"
+    );
+
+    const openaiKeySecret = secretsmanager.Secret.fromSecretNameV2(
+      this, "OpenAiKeySecret", "sense-platform/openai-key"
+    );
+
+    // -----------------------------------------
+    // Claude Proxy Lambda (OUTSIDE VPC — needs internet for Anthropic API)
+    // -----------------------------------------
+    const claudeFn = new lambda.Function(this, "ClaudeFunction", {
+      functionName: "sense-platform-claude",
+      description: "RAG endpoint — embeddings, vector search, Claude answers",
+      runtime: lambda.Runtime.PYTHON_3_12,
+      handler: "index.handler",
+      code: lambda.Code.fromAsset(
+        path.join(__dirname, "../lambda/claude_proxy"),
+        {
+          bundling: {
+            image: lambda.Runtime.PYTHON_3_12.bundlingImage,
+            command: [
+              "bash", "-c",
+              "pip install -r requirements.txt -t /asset-output && cp index.py /asset-output/",
+            ],
+          },
+        }
+      ),
+      timeout: cdk.Duration.seconds(29),
+      memorySize: 512,
+      vpc,
+      vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
+      securityGroups: [lambdaSg],
+      environment: {
+        ANTHROPIC_KEY_SECRET_ARN: anthropicKeySecret.secretArn,
+        OPENAI_KEY_SECRET_ARN: openaiKeySecret.secretArn,
+        DB_SECRET_ARN: db.secret!.secretArn,
+      },
+    });
+
+    anthropicKeySecret.grantRead(claudeFn);
+    openaiKeySecret.grantRead(claudeFn);
+    db.secret!.grantRead(claudeFn);
+    db.connections.allowFrom(claudeFn, ec2.Port.tcp(5432));
+
+    const claudeFnUrl = claudeFn.addFunctionUrl({
+      authType: lambda.FunctionUrlAuthType.NONE,
+      cors: {
+        allowedOrigins: [
+          `https://${frontendDomain}`,
+          `http://${frontendDomain}`,
+        ],
+        allowedMethods: [lambda.HttpMethod.POST],
+        allowedHeaders: ["Content-Type"],
+      },
+    });
+
+    // -----------------------------------------
     // Ingest Lambda
     // -----------------------------------------
     const ingestFn = new lambda.Function(this, "IngestFunction", {
@@ -172,18 +233,22 @@ export class SensePlatformStack extends cdk.Stack {
       timeout: cdk.Duration.seconds(30),
       memorySize: 256,
       vpc,
-      vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_ISOLATED },
+      vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
       securityGroups: [lambdaSg],
       environment: {
         DB_SECRET_ARN: db.secret!.secretArn,
         API_KEY_SECRET_ARN: apiKeySecret.secretArn,
         FRONTEND_DOMAIN: frontendDomain,
         FRONTEND_BUCKET_URL: `http://${frontendDomain}.s3-website-${this.region}.amazonaws.com`,
+        ANTHROPIC_KEY_SECRET_ARN: anthropicKeySecret.secretArn,
+        OPENAI_KEY_SECRET_ARN: openaiKeySecret.secretArn,
       },
     });
 
     db.secret!.grantRead(ingestFn);
     apiKeySecret.grantRead(ingestFn);
+    anthropicKeySecret.grantRead(ingestFn);
+    openaiKeySecret.grantRead(ingestFn);
     db.connections.allowFrom(ingestFn, ec2.Port.tcp(5432));
 
     // -----------------------------------------
@@ -294,6 +359,11 @@ export class SensePlatformStack extends cdk.Stack {
       description: "S3 static website URL",
     });
 
+
+    new cdk.CfnOutput(this, "ClaudeFunctionUrl", {
+      value: claudeFnUrl.url,
+      description: "Claude proxy function URL (for frontend /ask)",
+    });
 
     new cdk.CfnOutput(this, "LambdaFunctionName", {
       value: ingestFn.functionName,

@@ -19,6 +19,7 @@ from mangum import Mangum
 from pydantic import BaseModel, Field, field_validator
 import psycopg2
 from psycopg2.extras import RealDictCursor, Json
+from openai import OpenAI
 
 app = FastAPI(title="Sense Platform Ingest API", version="1.0.0")
 
@@ -62,6 +63,22 @@ def verify_api_key(api_key: str = Security(API_KEY_HEADER)):
     if api_key != _get_api_key():
         raise HTTPException(status_code=403, detail="Invalid API key")
     return api_key
+
+
+_openai_client = None
+
+def _get_openai():
+    global _openai_client
+    if _openai_client is None:
+        resp = _sm.get_secret_value(SecretId=os.environ["OPENAI_KEY_SECRET_ARN"])
+        _openai_client = OpenAI(api_key=resp["SecretString"])
+    return _openai_client
+
+
+def generate_embedding(text: str) -> list[float]:
+    client = _get_openai()
+    resp = client.embeddings.create(model="text-embedding-3-small", input=text)
+    return resp.data[0].embedding
 
 
 def get_db():
@@ -301,10 +318,17 @@ def ingest_reading(payload: ReadingPayload, api_key: str = Security(verify_api_k
                 device_tz = (device_row["timezone"] if device_row else None) or "Australia/Brisbane"
 
                 content = build_content_string(payload, computed, device_name, device_tz, field_meta)
+
+                try:
+                    embedding = generate_embedding(content)
+                except Exception as e:
+                    print(f"Embedding generation failed: {e}")
+                    embedding = None
+
                 cur.execute("""
-                    INSERT INTO reading_embeddings (reading_id, content, template_version)
-                    VALUES (%s, %s, 'v1')
-                """, (reading_id, content))
+                    INSERT INTO reading_embeddings (reading_id, content, embedding, template_version)
+                    VALUES (%s, %s, %s, 'v1')
+                """, (reading_id, content, str(embedding) if embedding else None))
 
         conn.close()
         response = {"status": "accepted", "reading_id": str(reading_id)}
@@ -385,6 +409,71 @@ def list_device_types():
             rows = cur.fetchall()
         conn.close()
         return [dict(r) for r in rows]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class AskContextPayload(BaseModel):
+    question: str = Field(..., min_length=1, max_length=1000)
+    device_id: Optional[str] = None
+    hours: int = Field(default=24, ge=1, le=168)
+
+
+@app.post("/ask-context")
+def ask_context(payload: AskContextPayload):
+    """Returns context from DB for the frontend to send to Claude Lambda."""
+    try:
+        conn = get_db()
+        with conn.cursor() as cur:
+            device_id = payload.device_id
+            if not device_id:
+                cur.execute("SELECT device_id FROM devices ORDER BY last_seen_at DESC LIMIT 1")
+                row = cur.fetchone()
+                if not row:
+                    raise HTTPException(status_code=404, detail="No devices found")
+                device_id = row["device_id"]
+
+            cur.execute("""
+                SELECT re.content, r.recorded_at
+                FROM reading_embeddings re
+                JOIN readings r ON r.id = re.reading_id
+                WHERE r.device_id = %s
+                  AND r.recorded_at > NOW() - INTERVAL '%s hours'
+                ORDER BY r.recorded_at DESC
+                LIMIT 50
+            """, (device_id, payload.hours))
+            readings = cur.fetchall()
+
+            cur.execute("""
+                SELECT title, content FROM knowledge_base
+                WHERE type_slug IS NULL
+                   OR type_slug = (SELECT type_slug FROM devices WHERE device_id = %s)
+                ORDER BY category, title
+            """, (device_id,))
+            knowledge = cur.fetchall()
+
+        conn.close()
+
+        if not readings:
+            raise HTTPException(status_code=404, detail="No recent readings found")
+
+        context_parts = []
+        context_parts.append("=== KNOWLEDGE BASE ===")
+        for kb in knowledge:
+            context_parts.append(f"## {kb['title']}\n{kb['content']}")
+        context_parts.append(f"\n=== RECENT READINGS (last {payload.hours}h, newest first) ===")
+        for r in readings:
+            context_parts.append(r["content"])
+
+        return {
+            "context": "\n\n".join(context_parts),
+            "device_id": device_id,
+            "readings_used": len(readings),
+            "knowledge_entries": len(knowledge),
+        }
+
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

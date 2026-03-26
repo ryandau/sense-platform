@@ -63,6 +63,35 @@ CREATE TABLE IF NOT EXISTS reading_embeddings (
     created_at        TIMESTAMPTZ DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS knowledge_base (
+    id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    type_slug   VARCHAR(64),
+    category    VARCHAR(64) NOT NULL,
+    title       VARCHAR(256) NOT NULL,
+    content     TEXT NOT NULL,
+    embedding   vector(1536),
+    metadata    JSONB,
+    created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_knowledge_type
+    ON knowledge_base(type_slug, category);
+
+INSERT INTO knowledge_base (type_slug, category, title, content) VALUES
+('air_quality', 'thresholds', 'WHO PM2.5 Guidelines',
+ 'WHO Air Quality Guidelines (2021): PM2.5 annual mean should not exceed 5 μg/m³. 24-hour mean should not exceed 15 μg/m³. Levels above 35 μg/m³ are considered unhealthy for sensitive groups. Levels above 55 μg/m³ are considered unhealthy for all. Levels above 150 μg/m³ are very unhealthy. Levels above 250 μg/m³ are hazardous.'),
+('air_quality', 'thresholds', 'CO2 Indoor Air Quality Guidelines',
+ 'CO2 concentration guidelines for indoor air quality: Below 800 ppm: Good air quality, fresh air adequate. 800-1000 ppm: Acceptable, consider ventilation. 1000-1500 ppm: Poor, increase ventilation, may cause drowsiness. 1500-2000 ppm: Very poor, headaches likely, ventilate immediately. Above 2000 ppm: Dangerous, evacuate and ventilate.'),
+('air_quality', 'thresholds', 'VOC Index Guidelines',
+ 'Sensirion VOC Index: 0-100 is typical/good (100 is the learned baseline). 100-150 slightly elevated. 150-250 elevated, consider ventilation. 250-400 high, investigate source and ventilate. Above 400 very high, potential health risk.'),
+('air_quality', 'thresholds', 'NOx Index Guidelines',
+ 'Sensirion NOx Index: 0-20 very low (clean air). 20-50 low, minor combustion source nearby. 50-150 moderate, gas stove or traffic exhaust. 150-300 high, significant combustion source. Above 300 very high, investigate immediately.'),
+('air_quality', 'context', 'EPA AQI Categories',
+ 'US EPA Air Quality Index: 0-50 Good (green), 51-100 Moderate (yellow), 101-150 Unhealthy for Sensitive Groups (orange), 151-200 Unhealthy (red), 201-300 Very Unhealthy (purple), 301-500 Hazardous (maroon).'),
+('air_quality', 'context', 'Australian NEPM Air Quality Standards',
+ 'Australian National Environment Protection Measure: PM2.5 24-hour standard is 25 μg/m³. Categories: Good (0-25), Fair (25-50), Poor (50-100), Very Poor (100-300), Extremely Poor (300+).')
+ON CONFLICT DO NOTHING;
+
 INSERT INTO device_types (slug, name, description, fields) VALUES
 ('air_quality', 'Air Quality Monitor',
  'Monitors particulate matter, gases, CO2, temperature and humidity',

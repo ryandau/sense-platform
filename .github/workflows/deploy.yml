@@ -57,7 +57,11 @@ jobs:
             --stack-name SensePlatformStack \
             --query 'Stacks[0].Outputs[?OutputKey==`ApiUrl`].OutputValue' \
             --output text)
-          printf 'window.SENSE_CONFIG = {\n  SITE_NAME: "%s",\n  API_BASE_URL: "%s",\n};\n' "$DOMAIN" "$API_URL" > frontend/config.js
+          CLAUDE_URL=$(aws cloudformation describe-stacks \
+            --stack-name SensePlatformStack \
+            --query 'Stacks[0].Outputs[?contains(OutputKey,`ClaudeFunctionUrl`)].OutputValue' \
+            --output text)
+          printf 'window.SENSE_CONFIG = {\n  SITE_NAME: "%s",\n  API_BASE_URL: "%s",\n  CLAUDE_FUNCTION_URL: "%s",\n};\n' "$DOMAIN" "$API_URL" "$CLAUDE_URL" > frontend/config.js
           aws s3 sync frontend/ "s3://$DOMAIN/" --delete
 
 
