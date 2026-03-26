@@ -20,7 +20,8 @@
             "latitude": 0,
             "longitude": 0,
             "location_label": "",
-            "country_code": ""
+            "country_code": "",
+            "dashboard_url": "https://YOUR_DASHBOARD_URL"
         },
         "buzzer": {
             "mute": false

@@ -29,7 +29,8 @@ public:
     bool upload(float pm1_0, float pm2_5, float pm4_0, float pm10_0,
                 float sen_temperature, float sen_humidity,
                 float voc_index, float nox_index,
-                uint16_t co2, float scd_temperature, float scd_humidity);
+                uint16_t co2, float scd_temperature, float scd_humidity,
+                uint32_t battery_mv);
 
 private:
     String _endpoint;   // e.g. "https://xxxxxxx.execute-api.ap-southeast-2.amazonaws.com/v1"

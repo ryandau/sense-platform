@@ -53,7 +53,35 @@ Find your account number: AWS Console → top right → account dropdown.
 
 Takes ~15 minutes on first run (RDS provisioning).
 
-## 5. Test with Simulated Data
+## 5. Firmware Setup (M5Stack AirQ)
+
+If you have an [M5Stack Air Quality Kit v1.1](https://github.com/m5stack/AirQUserDemo), the `firmware/airq/` directory contains a ready-to-build PlatformIO project.
+
+**Prerequisites:** [PlatformIO CLI](https://docs.platformio.org/en/latest/core/installation/index.html)
+
+```bash
+# Copy the config template and fill in your credentials
+cp firmware/airq/data/db.json.example firmware/airq/data/db.json
+```
+
+Edit `firmware/airq/data/db.json` with your WiFi SSID/password and Sense Platform API details (see [API usage](../README.md#api-usage) for how to retrieve these).
+
+```bash
+cd firmware/airq
+
+# Flash the config to device filesystem
+pio run --target uploadfs
+
+# Build and flash the firmware
+pio run --target upload
+
+# Monitor serial output (optional)
+pio device monitor
+```
+
+The device wakes every 60 seconds, connects to WiFi, reads sensors, POSTs to `/ingest`, and goes back to deep sleep. The e-ink display shows a permanent QR code linking to the web dashboard. See [firmware/README.md](../firmware/README.md) for full details.
+
+## 6. Test with Simulated Data
 
 Before your sensor device is ready, use the simulator to generate realistic readings. The script auto-discovers the API URL and key from CloudFormation:
 

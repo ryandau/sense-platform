@@ -11,13 +11,12 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/outfit@5/500.css">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body { width: 100%; height: 100%; background: #111; }
+    html, body { width: 100%; height: 100%; background: #111; overflow: hidden; }
     body { display: flex; flex-direction: column; font-family: 'Outfit', sans-serif; }
 
     /* Scene container */
     .scene {
       width: 100%; flex: 1;
-      min-height: 520px;
       position: relative; overflow: hidden;
       background: #0b0908;
     }
@@ -42,6 +41,11 @@
       z-index: 2; pointer-events: none;
     }
 
+    /* Text shadow for legibility against any sky */
+    .text-glow {
+      text-shadow: 0 1px 8px rgba(0,0,0,.35), 0 0 2px rgba(0,0,0,.2);
+    }
+
     /* Top bar */
     .top-bar {
       position: absolute; top: 0; left: 0; right: 0;
@@ -50,109 +54,144 @@
       z-index: 10; pointer-events: none;
     }
     .top-bar-label {
-      font-size: 9px; letter-spacing: .22em;
-      text-transform: uppercase; color: rgba(255,255,255,.3);
+      font-size: 12px; letter-spacing: .22em;
+      text-transform: uppercase; color: rgba(255,255,255,.5);
+    }
+    .top-bar-right {
+      display: flex; align-items: center; gap: 8px;
     }
     .top-bar-clock {
-      font-size: 9px; color: rgba(255,255,255,.22);
+      font-size: 13px; font-weight: 500; color: rgba(255,255,255,.45);
+    }
+    .status-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: rgba(255,255,255,.15);
     }
 
-    /* Centre content block */
+    /* Centre content — vertically centred above the skyline */
     .centre-block {
-      position: absolute; top: 54px; left: 0; right: 0;
+      position: absolute; top: 0; left: 0; right: 0;
+      bottom: 35%; /* skyline occupies ~bottom 35% */
+      padding: 0 20px;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
       text-align: center; z-index: 10; pointer-events: none;
     }
     .centre-label {
-      font-size: 8px; letter-spacing: .3em;
-      text-transform: uppercase; color: rgba(255,255,255,.22);
-      margin-bottom: 6px;
+      font-size: 11px; letter-spacing: .3em;
+      text-transform: uppercase; color: rgba(255,255,255,.4);
+      margin-bottom: 2px;
     }
     .aqi-number {
       font-family: 'Cormorant Garamond', Georgia, serif;
-      font-size: 118px; font-weight: 400;
-      line-height: .9; letter-spacing: -2px;
-      color: rgba(255,255,255,.9); padding-bottom: 26px;
+      font-size: 128px; font-weight: 400;
+      line-height: 1; letter-spacing: -2px;
+      color: rgba(255,255,255,.92); margin-bottom: 24px;
     }
     .aqi-category {
-      font-size: 9px; letter-spacing: .24em;
-      text-transform: uppercase; color: rgba(255,255,255,.42);
+      font-size: 14px; letter-spacing: .24em;
+      text-transform: uppercase; color: rgba(255,255,255,.6);
     }
     .location-row {
-      display: flex; align-items: center; gap: 5px;
-      justify-content: center; margin-top: 9px;
+      display: flex; align-items: center; gap: 6px;
+      justify-content: center; margin-top: 10px;
     }
     .location-dot {
-      width: 4px; height: 4px; border-radius: 50%;
-      background: rgba(255,255,255,.2); flex-shrink: 0;
+      width: 5px; height: 5px; border-radius: 50%;
+      background: rgba(255,255,255,.3); flex-shrink: 0;
       transition: background 1.5s;
     }
     @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
     .pulse { animation: pulse 2s ease-in-out infinite; }
     .location-label {
-      font-size: 10px; letter-spacing: .12em;
-      text-transform: uppercase; color: rgba(255,255,255,.38);
+      font-size: 13px; letter-spacing: .14em;
+      text-transform: uppercase; color: rgba(255,255,255,.55);
     }
 
     /* Stats row */
     .stats-container {
-      opacity: 0; transition: opacity .6s ease; margin-top: 22px;
+      opacity: 0; transition: opacity .6s ease;
+      margin-top: 20px; width: 100%;
     }
     .stats-divider {
-      width: 280px; border-top: 1px solid rgba(255,255,255,.1);
+      width: min(85%, 420px); border-top: 1px solid rgba(255,255,255,.15);
       margin: 0 auto 16px;
     }
     .stats-row {
-      display: inline-flex; gap: 22px;
+      display: flex; flex-wrap: nowrap; gap: 0;
       justify-content: center; align-items: flex-end;
     }
-    .stat-item { text-align: center; }
+    .stat-item {
+      text-align: center; flex: 1;
+      min-width: 0; max-width: 72px;
+    }
     .stat-value {
-      font-size: 16px; font-weight: 500;
-      color: rgba(255,255,255,.88); line-height: 1;
+      font-size: 20px; font-weight: 500;
+      color: rgba(255,255,255,.9); line-height: 1;
     }
     .stat-label {
-      font-size: 9px; letter-spacing: .08em;
-      text-transform: uppercase; color: rgba(255,255,255,.35);
-      margin-top: 5px;
+      font-size: 9px; letter-spacing: .06em;
+      text-transform: uppercase; color: rgba(255,255,255,.45);
+      margin-top: 6px;
     }
 
-    /* Button bar */
-    .btn-bar {
-      width: 100%; background: #1c1c1c;
-      border-top: 1px solid rgba(255,255,255,.18); flex-shrink: 0;
+    /* Ask bar */
+    .ask-bar {
+      position: absolute; bottom: 16px; left: 50%;
+      transform: translateX(-50%);
+      z-index: 20; width: min(90%, 480px);
+      pointer-events: auto;
     }
-    .btn-bar-inner {
-      padding: 10px 16px; overflow-x: auto;
-      -webkit-overflow-scrolling: touch; scrollbar-width: none;
+    .ask-input-row {
+      display: flex; gap: 8px; align-items: center;
     }
-    .btn-bar-inner::-webkit-scrollbar { display: none; }
-    .btn-row {
-      display: flex; align-items: center; gap: 6px;
-      white-space: nowrap; min-width: max-content; justify-content: center;
+    .ask-input {
+      flex: 1; padding: 10px 16px;
+      border-radius: 24px; border: 1px solid rgba(255,255,255,.2);
+      background: rgba(0,0,0,.35); color: rgba(255,255,255,.9);
+      font-size: 16px; font-family: 'Outfit', sans-serif;
+      outline: none; backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
     }
-    .btn-divider {
-      width: 1px; height: 14px; background: rgba(255,255,255,.12);
-      display: inline-block; margin: 0 4px; vertical-align: middle;
-    }
-
-    /* Shared button style */
-    .btn {
-      padding: 7px 14px; border-radius: 20px;
-      border: 1.5px solid #888; background: transparent; color: #ccc;
-      font-size: 11px; font-family: 'Outfit', sans-serif;
+    .ask-input::placeholder { color: rgba(255,255,255,.35); }
+    .ask-input:focus { border-color: rgba(255,255,255,.4); }
+    .ask-btn {
+      padding: 10px 18px; border-radius: 24px;
+      border: 1px solid rgba(255,255,255,.2);
+      background: rgba(255,255,255,.1); color: rgba(255,255,255,.8);
+      font-size: 13px; font-family: 'Outfit', sans-serif;
       cursor: pointer; white-space: nowrap;
-      -webkit-appearance: none; appearance: none; letter-spacing: .04em;
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
     }
-    .btn-live {
-      border-color: rgba(255,80,80,.6);
-      background: rgba(255,80,80,.12);
-      color: rgba(255,120,120,.9);
-      display: inline-flex; align-items: center; gap: 5px;
+    .ask-btn:hover { background: rgba(255,255,255,.18); }
+    .ask-btn:disabled { opacity: .4; cursor: default; }
+    .ask-response {
+      margin-bottom: 10px; padding: 14px 18px;
+      border-radius: 16px;
+      border: 1px solid rgba(255,255,255,.12);
+      background: rgba(0,0,0,.6); color: rgba(255,255,255,.9);
+      font-size: 13px; line-height: 1.6;
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      max-height: 180px; overflow-y: auto;
+      display: none;
     }
-    .btn-dot {
-      width: 5px; height: 5px; border-radius: 50%;
-      display: inline-block;
+    .ask-response.visible { display: block; }
+
+    /* Mobile */
+    @media (max-width: 480px) {
+      .top-bar { padding: 14px 16px; }
+      .top-bar-label { font-size: 10px; }
+      .top-bar-clock { font-size: 11px; }
+      .aqi-number { font-size: 96px; padding-bottom: 28px; }
+      .aqi-category { font-size: 12px; }
+      .location-label { font-size: 11px; }
+      .stats-container { margin-top: 16px; }
+      .stat-value { font-size: 17px; }
+      .stat-item { max-width: 60px; }
     }
+
   </style>
 </head>
 <body>
@@ -196,18 +235,21 @@
 
   <!-- Top bar -->
   <div class="top-bar">
-    <span id="site-name" class="top-bar-label">sense.donohue.ai</span>
-    <span id="ts" class="top-bar-clock">&ndash;</span>
+    <span id="site-name" class="top-bar-label text-glow">sense.donohue.ai</span>
+    <span class="top-bar-right">
+      <span id="status-dot" class="status-dot"></span>
+      <span id="ts" class="top-bar-clock text-glow">&ndash;</span>
+    </span>
   </div>
 
   <!-- Centre content -->
   <div class="centre-block">
-    <div class="centre-label">Air Quality Index</div>
-    <div id="anum" class="aqi-number">&ndash;</div>
-    <div id="acat" class="aqi-category pulse">Connecting</div>
+    <div class="centre-label text-glow">Air Quality Index</div>
+    <div id="anum" class="aqi-number text-glow">&ndash;</div>
+    <div id="acat" class="aqi-category text-glow pulse">Connecting</div>
     <div class="location-row" id="loc-row" style="opacity:0;transition:opacity .6s ease">
       <div id="ldot" class="location-dot"></div>
-      <span id="location" class="location-label"></span>
+      <span id="location" class="location-label text-glow"></span>
     </div>
 
     <div id="stats" class="stats-container">
@@ -215,23 +257,18 @@
       <div class="stats-row" id="stats-row"></div>
     </div>
   </div>
-</div>
 
-<!-- Button bar -->
-<div class="btn-bar">
-  <div class="btn-bar-inner">
-    <div class="btn-row">
-      <button id="live-tab" class="btn btn-live">
-        <span id="live-dot" class="btn-dot pulse" style="background:#ffe08a"></span>Connecting
-      </button>
-      <span class="btn-divider"></span>
-      <button data-s="good" class="btn">Good</button>
-      <button data-s="moderate" class="btn">Moderate</button>
-      <button data-s="unhealthy" class="btn">Unhealthy</button>
-      <button data-s="hazardous" class="btn">Hazardous</button>
+  <!-- Ask bar -->
+  <div class="ask-bar">
+    <div id="ask-response" class="ask-response"></div>
+    <div class="ask-input-row">
+      <input id="ask-input" class="ask-input" type="text"
+        placeholder="Ask about the readings, trends, or what they mean..." maxlength="500">
+      <button id="ask-btn" class="ask-btn">Ask</button>
     </div>
   </div>
 </div>
+
 
 <script>
 // ═══════════════════════════════════════════
@@ -240,29 +277,59 @@
 const CONFIG = {
   SITE_NAME: (window.SENSE_CONFIG && window.SENSE_CONFIG.SITE_NAME) || 'Sense Platform',
   API_BASE: (window.SENSE_CONFIG && window.SENSE_CONFIG.API_BASE_URL) || '',
+  CLAUDE_URL: (window.SENSE_CONFIG && window.SENSE_CONFIG.CLAUDE_FUNCTION_URL) || '',
   POLL_INTERVAL: 5000,
 };
+
+// Stat severity colours — white when normal, shifts warm as it worsens
+const SEV_COLORS = [
+  'rgba(255,255,255,.88)',  // good — default white
+  'rgba(255,224,138,.92)',  // moderate — warm yellow
+  'rgba(255,179,71,.92)',   // elevated — orange
+  'rgba(255,127,80,.92)',   // high — coral
+  'rgba(255,85,85,.92)',    // severe — red
+];
+
+// Thresholds per stat — array of breakpoints mapping to SEV_COLORS index
+// Each entry: [threshold, severity_index]. Value >= threshold gets that colour.
+const STAT_THRESHOLDS = {
+  pm25:     [[0, 0], [12, 1], [35.5, 2], [55.5, 3], [150.5, 4]],
+  pm10:     [[0, 0], [55, 1], [155, 2], [255, 3], [355, 4]],
+  co2:      [[0, 0], [800, 1], [1000, 2], [1500, 3], [2000, 4]],
+  voc:      [[0, 0], [150, 1], [250, 2], [350, 3], [450, 4]],
+  nox:      [[0, 0], [20, 1], [50, 2], [150, 3], [300, 4]],
+};
+
+function statColor(id, value) {
+  const thresholds = STAT_THRESHOLDS[id];
+  if (!thresholds) return SEV_COLORS[0];
+  let color = SEV_COLORS[0];
+  for (const [thresh, sev] of thresholds) {
+    if (value >= thresh) color = SEV_COLORS[sev];
+  }
+  return color;
+}
 
 // Stats to display — order matches the row
 const STAT_FIELDS = [
   { id: 'pm25',     label: 'PM2.5',    format: v => Math.round(v) },
-  { id: 'pm10',     label: 'PM10',     format: v => Math.round(v) },
-  { id: 'co2',      label: 'CO2 ppm',  format: v => Math.round(v) },
+  { id: 'co2',      label: 'CO2',      format: v => Math.round(v) },
+  { id: 'voc',      label: 'VOC',      format: v => Math.round(v) },
+  { id: 'nox',      label: 'NOx',      format: v => Math.round(v) },
   { id: 'temp',     label: 'Temp',     format: v => Math.round(v) + '\u00b0' },
   { id: 'humidity', label: 'Humidity', format: v => Math.round(v) + '%' },
-  { id: 'voc',      label: 'VOC',      format: v => Math.round(v) },
 ];
 
 // ═══════════════════════════════════════════
 // AQI STATE DEFINITIONS
 // ═══════════════════════════════════════════
 const AQI_STATES = [
-  { min: 0,   max: 50,  key: 'good',      label: 'Good',                          dot: '#7ee8a2', sky: 'linear-gradient(180deg,#0d3d6e 0%,#1a6bb8 32%,#3a9ad4 66%,#68bce6 88%,#90d4f0 100%)', specks: { n: [6, 35],    r: [0.4, 0.6],  al: [0.35, 0.50] }, blobs: { n: [0, 4],   r: [8, 14],  al: [0, 0.014] } },
-  { min: 51,  max: 100, key: 'moderate',  label: 'Moderate',                      dot: '#ffe08a', sky: 'linear-gradient(180deg,#1e3a52 0%,#3a6284 32%,#6894b0 66%,#9cc2d4 88%,#bddce6 100%)', specks: { n: [35, 90],   r: [0.6, 0.75], al: [0.50, 0.55] }, blobs: { n: [4, 12],  r: [14, 20], al: [0.014, 0.025] } },
-  { min: 101, max: 150, key: 'sensitive', label: 'Unhealthy for Sensitive Groups', dot: '#ffb347', sky: 'linear-gradient(180deg,#2c1c06 0%,#785010 32%,#ba8828 66%,#d8b050 88%,#e8cc72 100%)', specks: { n: [90, 180],  r: [0.75, 0.9], al: [0.55, 0.58] }, blobs: { n: [12, 22], r: [20, 24], al: [0.025, 0.032] } },
-  { min: 151, max: 200, key: 'unhealthy', label: 'Unhealthy',                     dot: '#ff7f50', sky: 'linear-gradient(180deg,#1c0804 0%,#782c08 32%,#b65020 66%,#d67840 88%,#e8a262 100%)', specks: { n: [180, 300], r: [0.9, 1.1],  al: [0.58, 0.60] }, blobs: { n: [22, 32], r: [24, 30], al: [0.032, 0.040] } },
-  { min: 201, max: 300, key: 'vuhealthy', label: 'Very Unhealthy',                dot: '#c77dff', sky: 'linear-gradient(180deg,#0e0620 0%,#3c1866 32%,#6e40a0 66%,#9468be 88%,#b490d6 100%)', specks: { n: [300, 480], r: [1.1, 1.3],  al: [0.60, 0.62] }, blobs: { n: [32, 48], r: [30, 36], al: [0.040, 0.048] } },
-  { min: 301, max: 500, key: 'hazardous', label: 'Hazardous',                     dot: '#ff5555', sky: 'linear-gradient(180deg,#080204 0%,#3c0808 32%,#7e2018 66%,#ae4030 88%,#c86252 100%)', specks: { n: [480, 650], r: [1.3, 1.5],  al: [0.62, 0.65] }, blobs: { n: [48, 65], r: [36, 42], al: [0.048, 0.055] } },
+  { min: 0,   max: 50,  key: 'good',      label: 'Good',                          dot: '#7ee8a2', sky: 'linear-gradient(180deg,#0d3d6e 0%,#1a6bb8 32%,#3a9ad4 66%,#68bce6 88%,#90d4f0 100%)', specks: { n: [10, 30],   r: [1.0, 1.2],  al: [0.55, 0.65] }, blobs: { n: [1, 3],    r: [10, 16], al: [0.008, 0.018] } },
+  { min: 51,  max: 100, key: 'moderate',  label: 'Moderate',                      dot: '#ffe08a', sky: 'linear-gradient(180deg,#1e3a52 0%,#3a6284 32%,#6894b0 66%,#9cc2d4 88%,#bddce6 100%)', specks: { n: [30, 70],    r: [1.2, 1.5],  al: [0.65, 0.72] }, blobs: { n: [3, 8],    r: [16, 22], al: [0.018, 0.030] } },
+  { min: 101, max: 150, key: 'sensitive', label: 'Unhealthy for Sensitive Groups', dot: '#ffb347', sky: 'linear-gradient(180deg,#2c1c06 0%,#785010 32%,#ba8828 66%,#d8b050 88%,#e8cc72 100%)', specks: { n: [70, 120],   r: [1.5, 1.8],  al: [0.72, 0.78] }, blobs: { n: [8, 15],   r: [22, 28], al: [0.030, 0.042] } },
+  { min: 151, max: 200, key: 'unhealthy', label: 'Unhealthy',                     dot: '#ff7f50', sky: 'linear-gradient(180deg,#1c0804 0%,#782c08 32%,#b65020 66%,#d67840 88%,#e8a262 100%)', specks: { n: [120, 160],  r: [1.8, 2.2],  al: [0.78, 0.82] }, blobs: { n: [15, 22],  r: [28, 34], al: [0.042, 0.052] } },
+  { min: 201, max: 300, key: 'vuhealthy', label: 'Very Unhealthy',                dot: '#c77dff', sky: 'linear-gradient(180deg,#0e0620 0%,#3c1866 32%,#6e40a0 66%,#9468be 88%,#b490d6 100%)', specks: { n: [160, 190],  r: [2.2, 2.6],  al: [0.82, 0.85] }, blobs: { n: [22, 28],  r: [34, 40], al: [0.052, 0.062] } },
+  { min: 301, max: 500, key: 'hazardous', label: 'Hazardous',                     dot: '#ff5555', sky: 'linear-gradient(180deg,#080204 0%,#3c0808 32%,#7e2018 66%,#ae4030 88%,#c86252 100%)', specks: { n: [190, 200],  r: [2.6, 3.0],  al: [0.85, 0.88] }, blobs: { n: [28, 30],  r: [40, 48], al: [0.062, 0.072] } },
 ];
 
 function lerp(a, b, t) { return a + (b - a) * t; }
@@ -287,12 +354,12 @@ function aqiState(aqi) {
 
 // Demo data for preview buttons
 const DEMO = {
-  good:      { aqi: 23,  pm25: 4.2,   pm10: 8.1,   co2: 412, temp: 26.4, humidity: 58, voc: 82  },
-  moderate:  { aqi: 76,  pm25: 15.8,  pm10: 28.4,  co2: 445, temp: 28.1, humidity: 62, voc: 124 },
-  sensitive: { aqi: 128, pm25: 46.2,  pm10: 72.1,  co2: 468, temp: 30.2, humidity: 45, voc: 186 },
-  unhealthy: { aqi: 165, pm25: 68.4,  pm10: 95.2,  co2: 512, temp: 31.8, humidity: 38, voc: 245 },
-  vuhealthy: { aqi: 248, pm25: 148.2, pm10: 198.5, co2: 589, temp: 29.4, humidity: 42, voc: 352 },
-  hazardous: { aqi: 342, pm25: 245.8, pm10: 312.4, co2: 645, temp: 28.9, humidity: 35, voc: 498 },
+  good:      { aqi: 23,  pm25: 4.2,   pm10: 8.1,   co2: 412, temp: 26.4, humidity: 58, voc: 82,  nox: 8,  co2_status: 'Good' },
+  moderate:  { aqi: 76,  pm25: 15.8,  pm10: 28.4,  co2: 445, temp: 28.1, humidity: 62, voc: 124, nox: 15, co2_status: 'Good' },
+  sensitive: { aqi: 128, pm25: 46.2,  pm10: 72.1,  co2: 868, temp: 30.2, humidity: 45, voc: 186, nox: 28, co2_status: 'Acceptable' },
+  unhealthy: { aqi: 165, pm25: 68.4,  pm10: 95.2,  co2: 1120, temp: 31.8, humidity: 38, voc: 245, nox: 42, co2_status: 'Poor' },
+  vuhealthy: { aqi: 248, pm25: 148.2, pm10: 198.5, co2: 1680, temp: 29.4, humidity: 42, voc: 352, nox: 65, co2_status: 'Very Poor' },
+  hazardous: { aqi: 342, pm25: 245.8, pm10: 312.4, co2: 2450, temp: 28.9, humidity: 35, voc: 498, nox: 95, co2_status: 'Dangerous' },
 };
 
 // ═══════════════════════════════════════════
@@ -304,8 +371,7 @@ const anumEl    = $('anum');
 const acatEl    = $('acat');
 const ldotEl    = $('ldot');
 const statsEl   = $('stats');
-const liveTab   = $('live-tab');
-const liveDot   = $('live-dot');
+const statusDot = $('status-dot');
 const canvas    = $('pc');
 const ctx       = canvas.getContext('2d');
 
@@ -336,8 +402,10 @@ let W = 800, H = 580;
 let specks = [], blobs = [];
 let curState = aqiState(23);
 
-function roofTop() { return H - 4; }
-function spreadH() { return H * 0.55; }
+// Skyline CSS is 260px, foreground rooftop peaks at ~60px from bottom of scene.
+// Particles base starts at rooftops, spreading upward.
+function roofTop() { return H - 60; }
+function spreadH() { return Math.min(300, H * 0.4); }
 
 function mkSpeck() {
   const base = roofTop(), spread = spreadH(), u = Math.random();
@@ -363,8 +431,8 @@ function initCanvas() {
   H = el.offsetHeight || 580;
   canvas.width = W;
   canvas.height = H;
-  specks = Array.from({ length: 650 }, mkSpeck);
-  blobs = Array.from({ length: 65 }, mkBlob);
+  specks = Array.from({ length: 200 }, mkSpeck);
+  blobs = Array.from({ length: 30 }, mkBlob);
 }
 
 function draw() {
@@ -395,7 +463,7 @@ function draw() {
     if (p.y > base + 4) { p.y = base + 4; p.vy = -Math.abs(p.vy) * .4; }
     if (p.y < ceiling) { p.y = ceiling; p.vy = Math.abs(p.vy) * .4; }
     const above = Math.max(0, base - p.y);
-    const alpha = st.blobs.al * Math.exp(-above / (spread * 0.45)) * (.5 + .5 * Math.sin(p.phase));
+    const alpha = st.blobs.al * Math.exp(-above / (spread * 0.7)) * (.5 + .5 * Math.sin(p.phase));
     const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, st.blobs.r);
     grad.addColorStop(0, 'rgba(255,255,255,' + alpha.toFixed(4) + ')');
     grad.addColorStop(1, 'rgba(255,255,255,0)');
@@ -411,35 +479,44 @@ function draw() {
     if (p.y > base + 3) { p.y = base + 3; p.vy = -Math.abs(p.vy) * .5; }
     if (p.y < ceiling) { p.y = ceiling; p.vy = Math.abs(p.vy) * .5; }
     const above = Math.max(0, base - p.y);
-    const alpha = st.specks.al * Math.exp(-above / (spread * 0.35)) * (.55 + .45 * Math.sin(p.phase));
+    const alpha = st.specks.al * Math.exp(-above / (spread * 0.7)) * (.6 + .4 * Math.sin(p.phase));
     ctx.beginPath(); ctx.arc(p.x, p.y, st.specks.r, 0, Math.PI * 2);
     ctx.fillStyle = 'rgba(255,255,255,' + Math.max(0, alpha).toFixed(3) + ')';
     ctx.fill();
   }
 
-  requestAnimationFrame(draw);
+  setTimeout(() => requestAnimationFrame(draw), 50); // ~20fps, saves CPU
 }
 
 // ═══════════════════════════════════════════
 // UI UPDATES
 // ═══════════════════════════════════════════
-function setLiveIndicator(online) {
-  const txt = liveTab.querySelector('span').nextSibling;
-  liveDot.classList.remove('pulse');
-  if (online) {
-    liveTab.style.borderColor = 'rgba(126,232,162,.7)';
-    liveTab.style.background = 'rgba(126,232,162,.15)';
-    liveTab.style.color = 'rgba(126,232,162,.95)';
-    liveDot.style.background = '#7ee8a2';
-    txt.textContent = 'Live';
+// Status dot — driven by how old the latest reading is (server timestamp)
+let lastReceivedAt = null; // ISO string from API
+
+function statusDotTick() {
+  if (!lastReceivedAt) {
+    statusDot.style.background = 'rgba(255,255,255,.15)';
   } else {
-    liveTab.style.borderColor = 'rgba(255,80,80,.6)';
-    liveTab.style.background = 'rgba(255,80,80,.12)';
-    liveTab.style.color = 'rgba(255,120,120,.9)';
-    liveDot.style.background = '#ff5555';
-    txt.textContent = 'Offline';
+    const ageSec = (Date.now() - new Date(lastReceivedAt).getTime()) / 1000;
+    const fadeDuration = 65; // fade over ~65s (device posts every 60s)
+
+    if (ageSec < 3) {
+      statusDot.style.background = '#7ee8a2';
+    } else if (ageSec < fadeDuration) {
+      const t = Math.min(1, (ageSec - 3) / fadeDuration);
+      const r = Math.round(126 + (100 - 126) * t);
+      const g = Math.round(232 + (100 - 232) * t);
+      const b = Math.round(162 + (100 - 162) * t);
+      const a = (0.88 - 0.68 * t).toFixed(2);
+      statusDot.style.background = 'rgba(' + r + ',' + g + ',' + b + ',' + a + ')';
+    } else {
+      statusDot.style.background = 'rgba(100,100,100,.2)';
+    }
   }
+  requestAnimationFrame(statusDotTick);
 }
+requestAnimationFrame(statusDotTick);
 
 function setFavicon(color) {
   $('favicon').href = "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='12' fill='" + encodeURIComponent(color) + "'/></svg>";
@@ -461,80 +538,16 @@ function applyData(data) {
   }
 
   STAT_FIELDS.forEach(f => {
-    statEls[f.id].textContent = f.format(data[f.id] ?? 0);
+    const val = data[f.id] ?? 0;
+    statEls[f.id].textContent = f.format(val);
+    statEls[f.id].style.color = statColor(f.id, val);
+    statEls[f.id].style.transition = 'color 1.5s ease';
   });
 
   statsEl.style.opacity = '1';
-
-  if (!isPreview) {
-    document.querySelectorAll('[data-s]').forEach(b => {
-      b.style.borderColor = '#888';
-      b.style.background = 'transparent';
-      b.style.color = '#ccc';
-    });
-  }
 }
 
-// ═══════════════════════════════════════════
-// LIVE / PREVIEW MODE
-// ═══════════════════════════════════════════
-let isPreview = false;
 let liveData = null;
-
-function setPreviewMode(key) {
-  isPreview = true;
-  ldotEl.style.opacity = '0.3';
-
-  liveTab.style.borderColor = liveData ? 'rgba(126,232,162,.25)' : 'rgba(255,80,80,.25)';
-  liveTab.style.background = 'transparent';
-  liveTab.style.color = liveData ? 'rgba(126,232,162,.35)' : 'rgba(255,120,120,.35)';
-
-  document.querySelectorAll('[data-s]').forEach(b => {
-    const on = b.dataset.s === key;
-    b.style.borderColor = on ? '#fff' : '#888';
-    b.style.background = on ? 'rgba(255,255,255,.18)' : 'transparent';
-    b.style.color = on ? '#fff' : '#ccc';
-  });
-
-  applyData(DEMO[key]);
-}
-
-function setLiveMode() {
-  isPreview = false;
-  ldotEl.style.opacity = '1';
-
-  document.querySelectorAll('[data-s]').forEach(b => {
-    b.style.borderColor = '#888';
-    b.style.background = 'transparent';
-    b.style.color = '#ccc';
-  });
-
-  if (liveData) {
-    setLiveIndicator(lastFetchOk !== false);
-    applyData(liveData);
-    if (failCount >= 3) {
-      acatEl.textContent = 'Stale data';
-      acatEl.classList.add('pulse');
-      statsEl.style.opacity = '0.5';
-    }
-  } else {
-    setLiveIndicator(false);
-    skyEl.style.background = AQI_STATES[0].sky;
-    anumEl.textContent = '\u2013';
-    acatEl.textContent = lastFetchOk === false ? 'Connection failed' : 'Connecting';
-    if (lastFetchOk !== false) acatEl.classList.add('pulse');
-    else acatEl.classList.remove('pulse');
-    ldotEl.style.background = 'rgba(255,255,255,.2)';
-    $('loc-row').style.opacity = '0';
-    statsEl.style.opacity = '0.4';
-    STAT_FIELDS.forEach(f => { statEls[f.id].textContent = '\u2013'; });
-  }
-}
-
-document.querySelectorAll('[data-s]').forEach(b =>
-  b.addEventListener('click', () => setPreviewMode(b.dataset.s))
-);
-liveTab.addEventListener('click', setLiveMode);
 
 // ═══════════════════════════════════════════
 // API FETCH
@@ -556,7 +569,6 @@ async function discoverDevice() {
 
 async function fetchLatest() {
   if (!CONFIG.API_BASE) {
-    setLiveIndicator(false);
     acatEl.textContent = '\u2013';
     acatEl.classList.remove('pulse');
     anumEl.textContent = '\u2013';
@@ -577,35 +589,36 @@ async function fetchLatest() {
     const d = json.data || json;
     const c = json.computed || {};
     liveData = {
-      aqi:      c.aqi           ?? d.aqi           ?? 0,
-      pm25:     d.pm2_5         ?? d.pm25           ?? 0,
-      pm10:     d.pm10_0        ?? d.pm10           ?? 0,
-      co2:      d.co2_ppm       ?? d.co2            ?? 0,
-      temp:     d.temperature_c ?? d.temperature    ?? 0,
-      humidity: d.humidity_pct  ?? d.humidity        ?? 0,
-      voc:      d.voc_index     ?? d.voc            ?? 0,
-      location: json.location_label                 ?? null,
+      aqi:        c.aqi           ?? d.aqi           ?? 0,
+      pm25:       d.pm2_5         ?? d.pm25           ?? 0,
+      pm10:       d.pm10_0        ?? d.pm10           ?? 0,
+      co2:        d.co2_ppm       ?? d.co2            ?? 0,
+      temp:       d.temperature_c ?? d.temperature    ?? 0,
+      humidity:   d.humidity_pct  ?? d.humidity        ?? 0,
+      voc:        d.voc_index     ?? d.voc            ?? 0,
+      nox:        d.nox_index     ?? d.nox            ?? 0,
+      location:   json.location_label                ?? null,
     };
+
+    lastReceivedAt = json.received_at || json.recorded_at || null;
 
     failCount = 0;
     lastFetchOk = true;
     acatEl.classList.remove('pulse');
-    if (!isPreview) { setLiveIndicator(true); applyData(liveData); }
+    applyData(liveData);
+    if (!autoSummaryDone) autoSummary();
   } catch (err) {
     console.warn('Fetch failed:', err);
     failCount++;
     lastFetchOk = false;
 
-    if (!isPreview) {
-      setLiveIndicator(false);
-      if (!liveData) {
-        acatEl.textContent = 'Connection failed';
-        acatEl.classList.remove('pulse');
-      } else if (failCount >= 3) {
-        acatEl.textContent = 'Stale data';
-        acatEl.classList.add('pulse');
-        statsEl.style.opacity = '0.5';
-      }
+    if (!liveData) {
+      acatEl.textContent = 'Connection failed';
+      acatEl.classList.remove('pulse');
+    } else if (failCount >= 3) {
+      acatEl.textContent = 'Stale data';
+      acatEl.classList.add('pulse');
+      statsEl.style.opacity = '0.5';
     }
   }
 }
@@ -616,7 +629,7 @@ async function fetchLatest() {
 function tick() {
   $('ts').textContent = new Date().toLocaleTimeString('en-AU', {
     hour: '2-digit', minute: '2-digit', second: '2-digit',
-  }) + ' AEST';
+  }).toUpperCase() + ' AEST';
 }
 
 // ═══════════════════════════════════════════
@@ -635,6 +648,79 @@ setTimeout(() => {
 }, 100);
 
 window.addEventListener('resize', initCanvas);
+
+// ═══════════════════════════════════════════
+// ASK
+// ═══════════════════════════════════════════
+let autoSummaryDone = false;
+
+async function autoSummary() {
+  if (autoSummaryDone || !CONFIG.CLAUDE_URL) return;
+  autoSummaryDone = true;
+
+  const askResponse = $('ask-response');
+  askResponse.textContent = '...';
+  askResponse.classList.add('visible');
+
+  try {
+    const res = await fetch(CONFIG.CLAUDE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'ask',
+        question: 'Give a brief status of the air quality right now. If anything is elevated, say what. Note if anything is abnormal compared to recent readings. If multiple readings are elevated, consider what they might indicate together. State facts, not suggestions.',
+      }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+    askResponse.textContent = data.answer || '';
+  } catch (err) {
+    console.warn('Auto-summary failed:', err);
+    askResponse.classList.remove('visible');
+  }
+}
+
+const askInput = $('ask-input');
+const askBtn = $('ask-btn');
+const askResponse = $('ask-response');
+
+async function askQuestion() {
+  const question = askInput.value.trim();
+  if (!question || !CONFIG.CLAUDE_URL) return;
+
+  askBtn.disabled = true;
+  askBtn.textContent = '...';
+  askResponse.textContent = 'Thinking...';
+  askResponse.classList.add('visible');
+
+  try {
+    const res = await fetch(CONFIG.CLAUDE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'ask', question }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+    askResponse.textContent = data.answer || 'No response.';
+  } catch (err) {
+    console.error('Ask failed:', err);
+    askResponse.textContent = 'Something went wrong. Try again.';
+  }
+
+  askBtn.disabled = false;
+  askBtn.textContent = 'Ask';
+}
+
+askBtn.addEventListener('click', askQuestion);
+askInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter') askQuestion();
+});
+askInput.addEventListener('input', () => {
+  if (askInput.value.trim() === '') {
+    askResponse.classList.remove('visible');
+    askResponse.innerHTML = '';
+  }
+});
 </script>
 </body>
 </html>

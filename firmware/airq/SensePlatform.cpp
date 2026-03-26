@@ -28,7 +28,7 @@ bool SensePlatform::upload(float pm1_0, float pm2_5, float pm4_0, float pm10_0,
                            float sen_temperature, float sen_humidity,
                            float voc_index, float nox_index,
                            uint16_t co2, float scd_temperature,
-                           float scd_humidity) {
+                           float scd_humidity, uint32_t battery_mv) {
     if (_endpoint.isEmpty() || _apiKey.isEmpty() || _deviceId.isEmpty()) {
         log_e("SensePlatform not configured (endpoint/apiKey/deviceId missing)");
         return false;
@@ -59,6 +59,7 @@ bool SensePlatform::upload(float pm1_0, float pm2_5, float pm4_0, float pm10_0,
     cJSON_AddNumberToObject(data, "co2_ppm", (double)co2);
     cJSON_AddNumberToObject(data, "scd_temperature", scd_temperature);
     cJSON_AddNumberToObject(data, "scd_humidity", scd_humidity);
+    cJSON_AddNumberToObject(data, "battery_mv", (double)battery_mv);
 
     cJSON_AddItemToObject(root, "data", data);
 

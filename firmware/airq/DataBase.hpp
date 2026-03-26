@@ -34,6 +34,7 @@ public:
         float longitude;
         String locationLabel;
         String countryCode;
+        String dashboardUrl;
     } sense;
     struct {
         bool onoff;

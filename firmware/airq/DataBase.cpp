@@ -65,6 +65,7 @@ void DataBase::saveToFile() {
     cJSON_AddNumberToObject(senseObject, "longitude", sense.longitude);
     cJSON_AddStringToObject(senseObject, "location_label", sense.locationLabel.c_str());
     cJSON_AddStringToObject(senseObject, "country_code", sense.countryCode.c_str());
+    cJSON_AddStringToObject(senseObject, "dashboard_url", sense.dashboardUrl.c_str());
 
     buzzerObject = cJSON_CreateObject();
     if (buzzerObject == NULL) {
@@ -113,6 +114,7 @@ void DataBase::dump() {
     log_d("    longitude: %f", sense.longitude);
     log_d("    location_label: %s", sense.locationLabel.c_str());
     log_d("    country_code: %s", sense.countryCode.c_str());
+    log_d("    dashboard_url: %s", sense.dashboardUrl.c_str());
 
     log_d("  buzzer:");
     log_d("    onoff: %d", buzzer.onoff);
@@ -184,6 +186,8 @@ void DataBase::loadFromFile(void) {
         if (item) sense.locationLabel = String(item->valuestring);
         item = cJSON_GetObjectItem(senseObject, "country_code");
         if (item) sense.countryCode = String(item->valuestring);
+        item = cJSON_GetObjectItem(senseObject, "dashboard_url");
+        if (item) sense.dashboardUrl = String(item->valuestring);
     }
 
     cJSON *buzzerObject = cJSON_GetObjectItem(configObject, "buzzer");
