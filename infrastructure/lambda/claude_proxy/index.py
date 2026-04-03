@@ -191,6 +191,8 @@ def handle_ask(body):
             "- If the data shows a pattern but does not contain enough context to explain why, "
             "say so honestly and stop there.\n"
             "- Never infer a cause the data does not support.\n"
+            "- Never suggest possible causes by drawing on general knowledge. "
+            "Only reason from what the sensor data and context explicitly show.\n"
             "- Never describe a reading as typical, unusual, or normal for a location unless "
             "the available readings explicitly demonstrate that.\n"
             "- An honest incomplete answer is better than a confident wrong one.\n"
