@@ -1,27 +1,18 @@
 """
 Tests for the Sense Platform API endpoints.
-Uses FastAPI TestClient with a mocked database. Config is env-based (no AWS).
+Uses FastAPI TestClient with a mocked database. Config is env-based (no AWS);
+required env keys are set in conftest.py before the app is imported.
 """
-import sys
-import os
+import pytest
 from unittest.mock import patch, MagicMock
+from fastapi.testclient import TestClient
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from app.main import app
+import app.main as mod
+import app.config as config
+from tests._breakpoints import seed_breakpoints
 
 TEST_API_KEY = "test-api-key-12345"
-# Config reads env at import time. The AI layer is required, so supply dummy
-# keys; the real OpenAI/Anthropic calls are mocked or not exercised in tests.
-os.environ["SENSE_API_KEY"] = TEST_API_KEY
-os.environ.setdefault("OPENAI_API_KEY", "test-openai-key")
-os.environ.setdefault("ANTHROPIC_API_KEY", "test-anthropic-key")
-
-import pytest
-from fastapi.testclient import TestClient
-from backend.app.main import app
-import backend.app.main as mod
-import app.config as config
-from backend.tests._breakpoints import seed_breakpoints
-
 client = TestClient(app)
 
 
@@ -55,8 +46,8 @@ def test_ingest_invalid_api_key():
     assert resp.status_code == 403
 
 
-@patch("backend.app.main.generate_embedding", return_value=None)
-@patch("backend.app.main.get_db")
+@patch("app.main.generate_embedding", return_value=None)
+@patch("app.main.get_db")
 def test_ingest_success(mock_get_db, mock_embed):
     seed_breakpoints(mod)
 
@@ -105,7 +96,7 @@ def test_ingest_empty_data_rejected():
 
 # ── Read endpoints (public, no auth) ─────────────────────
 
-@patch("backend.app.main.get_db")
+@patch("app.main.get_db")
 def test_devices_list(mock_get_db):
     mock_cursor = MagicMock()
     mock_cursor.fetchall.return_value = [
@@ -122,7 +113,7 @@ def test_devices_list(mock_get_db):
     assert resp.json()[0]["device_id"] == "sensor-001"
 
 
-@patch("backend.app.main.get_db")
+@patch("app.main.get_db")
 def test_device_latest(mock_get_db):
     mock_cursor = MagicMock()
     mock_cursor.fetchone.return_value = {
@@ -139,7 +130,7 @@ def test_device_latest(mock_get_db):
     assert resp.json()["device_id"] == "sensor-001"
 
 
-@patch("backend.app.main.get_db")
+@patch("app.main.get_db")
 def test_device_latest_not_found(mock_get_db):
     mock_cursor = MagicMock()
     mock_cursor.fetchone.return_value = None
@@ -152,7 +143,7 @@ def test_device_latest_not_found(mock_get_db):
     assert resp.status_code == 404
 
 
-@patch("backend.app.main.get_db")
+@patch("app.main.get_db")
 def test_device_history(mock_get_db):
     mock_cursor = MagicMock()
     mock_cursor.fetchall.return_value = [
@@ -169,7 +160,7 @@ def test_device_history(mock_get_db):
     assert len(resp.json()) == 2
 
 
-@patch("backend.app.main.get_db")
+@patch("app.main.get_db")
 def test_types_list(mock_get_db):
     mock_cursor = MagicMock()
     mock_cursor.fetchall.return_value = [
@@ -188,7 +179,7 @@ def test_types_list(mock_get_db):
 
 # ── Auth model — reads are public ────────────────────────
 
-@patch("backend.app.main.get_db")
+@patch("app.main.get_db")
 def test_read_endpoints_need_no_auth(mock_get_db):
     mock_cursor = MagicMock()
     mock_cursor.fetchall.return_value = []

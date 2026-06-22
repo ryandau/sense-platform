@@ -1,18 +1,15 @@
 """
 Tests for sense-platform ingest API — unit tests for engine, models, and content string.
 """
-import sys
-import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from datetime import datetime, timezone
-from backend.app.main import (
+from app.main import (
     BreakpointEngine,
     build_content_string,
     ReadingPayload,
 )
-import backend.app.main as mod
-from backend.tests._breakpoints import seed_breakpoints
+import app.main as mod
+from tests._breakpoints import seed_breakpoints
 
 
 engine = BreakpointEngine()

@@ -51,3 +51,6 @@ firmware/airq/data/db.json
 backups/
 
 venv-eval/
+
+# Local-only compose overrides
+docker-compose.override.yml

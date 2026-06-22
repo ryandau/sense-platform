@@ -1,11 +1,8 @@
 """
 Tests for app.ai.retrieval helpers. Database access is mocked.
 """
-import sys
-import os
 from unittest.mock import MagicMock
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from app.ai import retrieval
 

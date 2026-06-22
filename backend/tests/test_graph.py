@@ -2,11 +2,8 @@
 Tests for the routed /ask query graph (app.ai.graph).
 LLM and database calls are mocked.
 """
-import sys
-import os
 from unittest.mock import patch, MagicMock
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from app.ai import graph
 

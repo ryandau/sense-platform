@@ -1,15 +1,12 @@
 """
 Tests for the MCP server tools (app.mcp_server). Database access is mocked.
 """
-import sys
-import os
 import asyncio
 from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from app import mcp_server
 

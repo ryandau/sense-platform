@@ -1,7 +1,8 @@
-# AI Layer v2 — Design
+# AI Query Layer — Architecture
 
-Status: in progress. Tracks the redesign of the `/ask` query layer and the
-supporting infrastructure around it.
+Describes the design of the `/ask` query layer and the supporting infrastructure
+around it: LangGraph routing, optional Langfuse tracing, the MCP server, and
+RAGAS evaluation.
 
 ## Motivation
 
@@ -71,7 +72,7 @@ duplicated. Runs over stdio for local clients and optionally over HTTP/SSE.
 
 A development/CI harness scoring `/ask` against a fixed question set on the
 faithfulness, answer-relevancy, and context-precision metrics. RAGAS's
-dependencies are isolated in `requirements-eval.txt` and never enter the API
+dependencies are isolated in `eval/requirements-eval.txt` and never enter the API
 image. Runs on demand or on a schedule, not on every pull request (it makes
 many model calls).
 
@@ -88,7 +89,7 @@ backend/app/
 eval/
   dataset.yaml      questions (and optional ground truth)
   run.py            RAGAS runner
-requirements-eval.txt
+eval/requirements-eval.txt
 ```
 
 ## Configuration additions

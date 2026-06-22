@@ -1,0 +1,19 @@
+[project]
+name = "sense-platform"
+version = "2.0.0"
+description = "Sensor-agnostic IoT platform: ingest, derived metrics, and RAG queries over sensor data."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+# Runtime dependencies are pinned in backend/requirements.txt (used by the
+# Docker build); evaluation-only deps are in eval/requirements-eval.txt.
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.pytest.ini_options]
+# Put backend/ on the import path so tests import the app as `app.*` (the same
+# package name the container runs, `uvicorn app.main:app`) without sys.path hacks.
+pythonpath = ["backend"]
+testpaths = ["backend/tests"]
