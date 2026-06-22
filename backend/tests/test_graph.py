@@ -82,9 +82,22 @@ def test_retrieve_analytical_aggregate(mock_overview):
     assert "avg of pm2_5" in out["context"]
     # aggregate is a fixed allow-list identifier; field is a bound parameter
     sql, params = cur.execute.call_args[0]
-    assert "AVG((data->>%(field)s)::numeric)" in sql
+    assert "AVG((r.data->>%(field)s)::numeric)" in sql
     assert params["field"] == "pm2_5"
     assert "make_interval" in sql  # stated window -> time filter applied
+
+
+@patch("app.ai.graph.retrieval.overview_context", return_value="")
+def test_retrieve_analytical_min_returns_when(mock_overview):
+    conn, cur = _conn_with_row({"value": 19.95, "when_local": "Thursday 30 April 2026 at 2:54 AM"})
+    graph._conn.set(conn)
+    out = graph.retrieve_analytical(
+        {"plan": {"field": "temperature", "aggregation": "min", "window_hours": None}, "device_id": "d"})
+    assert out["meta"]["value"] == 19.95
+    assert out["meta"]["when"] == "Thursday 30 April 2026 at 2:54 AM"
+    assert "lowest temperature" in out["context"]
+    assert "2:54 AM" in out["context"]
+    assert "ORDER BY (r.data->>%(field)s)::numeric ASC" in cur.execute.call_args[0][0]
 
 
 @patch("app.ai.graph.retrieval.overview_context", return_value="")
@@ -101,7 +114,7 @@ def test_retrieve_analytical_all_time_when_no_window(mock_overview):
 
 @patch("app.ai.graph.retrieval.overview_context", return_value="")
 def test_retrieve_analytical_no_data(mock_overview):
-    conn, _ = _conn_with_row({"value": None, "n": 0})
+    conn, _ = _conn_with_row(None)  # min/max with no matching reading -> no row
     graph._conn.set(conn)
     out = graph.retrieve_analytical(
         {"plan": {"field": "pm2_5", "aggregation": "max", "window_hours": 24}, "device_id": "d"})

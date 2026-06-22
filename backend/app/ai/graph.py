@@ -36,14 +36,20 @@ _MAX_WINDOW_HOURS = 8760
 _CLASSIFY_PROMPT = (
     "Classify a question about air-quality sensor data, then return ONLY a JSON object.\n\n"
     "Routes:\n"
-    '- "analytical": asks for an aggregate over time — average, minimum, maximum, total, '
-    "or count (e.g. 'what was the average CO2 last week').\n"
-    '- "specific": asks about particular readings, events, current status, trends, or causes '
-    "(e.g. 'when was PM2.5 worst', 'how is the air right now').\n\n"
+    '- "analytical": asks for a number computed over time about a SPECIFIC field — an '
+    "average, a minimum (lowest/coolest), a maximum (highest/peak/warmest/worst), a total, "
+    "or a count. This includes 'when was it highest/lowest' for a named field. "
+    "Examples: 'average CO2 last week', 'what was the coolest temperature and when', "
+    "'when was PM2.5 highest', 'how many readings this month'.\n"
+    '- "specific": asks about overall conditions, current status, trends, causes, or the '
+    "worst air quality in general without naming a single field. "
+    "Examples: 'how is the air right now', 'how clean has the air been overall', "
+    "'why is CO2 high'.\n\n"
     "For analytical questions also extract:\n"
-    "- field: the data key, one of pm1_0, pm2_5, pm4_0, pm10_0, co2_ppm, voc_index, "
-    "nox_index, temperature, humidity (null if unclear)\n"
-    "- aggregation: one of avg, min, max, sum, count\n"
+    "- field: the data key the number is about — one of pm1_0, pm2_5, pm4_0, pm10_0, "
+    "co2_ppm, voc_index, nox_index, temperature, humidity (null if no single field is named)\n"
+    "- aggregation: one of avg, min, max, sum, count. Map lowest/coolest/minimum -> min; "
+    "highest/peak/warmest/worst/maximum -> max.\n"
     "- window_hours: the window in hours (24 for a day, 168 for a week, 720 for a month), "
     "null if unstated\n\n"
     'Return exactly: {"route": "...", "field": ..., "aggregation": ..., "window_hours": ...}. '
@@ -134,27 +140,52 @@ def retrieve_analytical(state: AskState) -> dict:
     raw = plan.get("window_hours")
     window = None if raw is None else max(1, min(int(raw), _MAX_WINDOW_HOURS))
 
-    time_sql = "" if window is None else " AND recorded_at > NOW() - make_interval(hours => %(window)s)"
-    params = {"device_id": state["device_id"], "field": field, "window": window}
-    if agg == "COUNT":
-        sql = ("SELECT COUNT(*) AS value, COUNT(*) AS n FROM readings "
-               "WHERE device_id = %(device_id)s" + time_sql)
-    else:
-        sql = (f"SELECT {agg}((data->>%(field)s)::numeric) AS value, "
-               "COUNT(*) FILTER (WHERE data ? %(field)s) AS n FROM readings "
-               "WHERE device_id = %(device_id)s" + time_sql)
+    numeric = r"^-?[0-9]+\.?[0-9]*$"
+    time_sql = "" if window is None else " AND r.recorded_at > NOW() - make_interval(hours => %(window)s)"
+    params = {"device_id": state["device_id"], "field": field, "window": window, "numeric": numeric}
+    when = None
 
     with _conn.get().cursor() as cur:
-        cur.execute(sql, params)
-        row = cur.fetchone()
+        if agg in ("MIN", "MAX"):
+            # Fetch the actual extreme reading, with its local timestamp, so
+            # "...and when?" is answerable.
+            order = "ASC" if agg == "MIN" else "DESC"
+            cur.execute(
+                "SELECT (r.data->>%(field)s)::numeric AS value, "
+                "to_char(r.recorded_at AT TIME ZONE COALESCE(d.timezone, 'UTC'), "
+                "'FMDay FMDD FMMonth YYYY \"at\" FMHH12:MI AM') AS when_local "
+                "FROM readings r JOIN devices d ON d.device_id = r.device_id "
+                "WHERE r.device_id = %(device_id)s AND r.data->>%(field)s ~ %(numeric)s"
+                + time_sql + f" ORDER BY (r.data->>%(field)s)::numeric {order} LIMIT 1",
+                params,
+            )
+            row = cur.fetchone()
+            value = round(float(row["value"]), 2) if row and row["value"] is not None else None
+            n = 1 if value is not None else 0
+            when = row["when_local"] if row else None
+        elif agg == "COUNT":
+            cur.execute("SELECT COUNT(*) AS value, COUNT(*) AS n FROM readings r "
+                        "WHERE r.device_id = %(device_id)s" + time_sql, params)
+            row = cur.fetchone()
+            value, n = row["value"], row["n"]
+        else:  # AVG, SUM
+            cur.execute(
+                f"SELECT {agg}((r.data->>%(field)s)::numeric) "
+                "FILTER (WHERE r.data->>%(field)s ~ %(numeric)s) AS value, "
+                "COUNT(*) FILTER (WHERE r.data->>%(field)s ~ %(numeric)s) AS n "
+                "FROM readings r WHERE r.device_id = %(device_id)s" + time_sql, params)
+            row = cur.fetchone()
+            value = round(float(row["value"]), 2) if row["value"] is not None else None
+            n = row["n"]
 
-    value, n = row["value"], row["n"]
     span = "all time" if window is None else f"the last {window} hours"
     if value is None or not n:
         line = f"No {field or 'matching'} readings over {span}."
         value = None
+    elif agg in ("MIN", "MAX"):
+        extreme = "lowest" if agg == "MIN" else "highest"
+        line = f"The {extreme} {field} over {span} was {value}, recorded on {when}."
     else:
-        value = round(float(value), 2)
         line = (f"Aggregate over {span}: {plan['aggregation']} of "
                 f"{field or 'readings'} = {value} (from {n} readings).")
 
@@ -163,7 +194,7 @@ def retrieve_analytical(state: AskState) -> dict:
     context = f"{overview}\n\n{line}" if overview else line
     return {"context": context, "meta": {
         "field": field, "aggregation": plan["aggregation"],
-        "window_hours": window, "value": value, "readings": n}}
+        "window_hours": window, "value": value, "readings": n, "when": when}}
 
 
 @tracing.observe(name="retrieve_specific")
