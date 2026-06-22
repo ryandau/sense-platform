@@ -12,13 +12,18 @@ directly. The graph is not checkpointed, so the live DB connection is carried
 in state.
 """
 
+import contextvars
 import json
 from typing import Optional, TypedDict
 
 from langgraph.graph import StateGraph, START, END
 
 from app import config
-from app.ai import retrieval
+from app.ai import retrieval, tracing
+
+# The live DB connection for the current /ask. Held in a context var rather than
+# in graph state so that traced node inputs/outputs stay serializable.
+_conn = contextvars.ContextVar("ask_conn")
 
 # Aggregations allowed in the analytical branch. The value is injected into SQL
 # as an identifier, so it MUST come from this fixed set (never from user input).
@@ -79,7 +84,6 @@ class AskState(TypedDict, total=False):
     question: str
     device_id: str
     hours: int
-    conn: object
     route: str
     plan: Optional[dict]
     context: str
@@ -87,6 +91,7 @@ class AskState(TypedDict, total=False):
     meta: dict
 
 
+@tracing.observe(name="classify")
 def classify(state: AskState) -> dict:
     """Choose a route and, for analytical questions, extract the aggregation plan."""
     try:
@@ -113,6 +118,7 @@ def classify(state: AskState) -> dict:
     return {"route": "specific", "plan": None}
 
 
+@tracing.observe(name="retrieve_analytical")
 def retrieve_analytical(state: AskState) -> dict:
     """Run a parameterised aggregation. The aggregate is from a fixed allow-list;
     the field is bound as a value, so the query is injection-safe."""
@@ -121,7 +127,7 @@ def retrieve_analytical(state: AskState) -> dict:
     field = plan["field"]
     window = max(1, min(int(plan["window_hours"]), _MAX_WINDOW_HOURS))
 
-    with state["conn"].cursor() as cur:
+    with _conn.get().cursor() as cur:
         if agg == "COUNT":
             cur.execute(
                 "SELECT COUNT(*) AS value, COUNT(*) AS n FROM readings "
@@ -150,9 +156,10 @@ def retrieve_analytical(state: AskState) -> dict:
         "window_hours": window, "value": value, "readings": n}}
 
 
+@tracing.observe(name="retrieve_specific")
 def retrieve_specific(state: AskState) -> dict:
     """Vector search + recent readings + knowledge base (the original retrieval)."""
-    result = retrieval.retrieve(state["conn"], state["question"], state["device_id"], state["hours"])
+    result = retrieval.retrieve(_conn.get(), state["question"], state["device_id"], state["hours"])
     if result is None:
         return {"context": "No readings are available for this device.",
                 "meta": {"similar_readings": 0, "recent_readings": 0}}
@@ -161,6 +168,7 @@ def retrieve_specific(state: AskState) -> dict:
         "recent_readings": result["recent_readings"]}}
 
 
+@tracing.observe(name="synthesise")
 def synthesise(state: AskState) -> dict:
     """Generate the final answer from the retrieved context."""
     msg = config.get_anthropic().messages.create(
@@ -191,9 +199,12 @@ def _build():
 GRAPH = _build()
 
 
+@tracing.observe(name="ask")
 def run(conn, question, device_id, hours):
     """Invoke the graph; returns {answer, route, meta}."""
-    final = GRAPH.invoke({
-        "question": question, "device_id": device_id, "hours": hours, "conn": conn,
-    })
-    return {"answer": final["answer"], "route": final["route"], "meta": final.get("meta", {})}
+    token = _conn.set(conn)
+    try:
+        final = GRAPH.invoke({"question": question, "device_id": device_id, "hours": hours})
+        return {"answer": final["answer"], "route": final["route"], "meta": final.get("meta", {})}
+    finally:
+        _conn.reset(token)

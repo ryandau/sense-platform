@@ -73,9 +73,9 @@ def test_classify_defaults_window_when_missing(mock_get):
 
 def test_retrieve_analytical_aggregate():
     conn, cur = _conn_with_row({"value": 9.3333, "n": 1200})
-    state = {"plan": {"field": "pm2_5", "aggregation": "avg", "window_hours": 168},
-             "device_id": "d", "conn": conn}
-    out = graph.retrieve_analytical(state)
+    graph._conn.set(conn)
+    out = graph.retrieve_analytical(
+        {"plan": {"field": "pm2_5", "aggregation": "avg", "window_hours": 168}, "device_id": "d"})
     assert out["meta"]["value"] == 9.33
     assert out["meta"]["readings"] == 1200
     assert "avg of pm2_5" in out["context"]
@@ -87,18 +87,18 @@ def test_retrieve_analytical_aggregate():
 
 def test_retrieve_analytical_no_data():
     conn, _ = _conn_with_row({"value": None, "n": 0})
-    state = {"plan": {"field": "pm2_5", "aggregation": "max", "window_hours": 24},
-             "device_id": "d", "conn": conn}
-    out = graph.retrieve_analytical(state)
+    graph._conn.set(conn)
+    out = graph.retrieve_analytical(
+        {"plan": {"field": "pm2_5", "aggregation": "max", "window_hours": 24}, "device_id": "d"})
     assert out["meta"]["value"] is None
     assert "No pm2_5 readings" in out["context"]
 
 
 def test_retrieve_analytical_count_uses_count_query():
     conn, cur = _conn_with_row({"value": 42, "n": 42})
-    state = {"plan": {"field": None, "aggregation": "count", "window_hours": 24},
-             "device_id": "d", "conn": conn}
-    out = graph.retrieve_analytical(state)
+    graph._conn.set(conn)
+    out = graph.retrieve_analytical(
+        {"plan": {"field": None, "aggregation": "count", "window_hours": 24}, "device_id": "d"})
     assert out["meta"]["readings"] == 42
     assert "COUNT(*)" in cur.execute.call_args[0][0]
 
@@ -108,12 +108,27 @@ def test_retrieve_analytical_count_uses_count_query():
 @patch("app.ai.graph.retrieval.retrieve")
 def test_retrieve_specific_delegates(mock_retrieve):
     mock_retrieve.return_value = {"context": "ctx", "similar_readings": 5, "recent_readings": 3}
-    out = graph.retrieve_specific({"conn": MagicMock(), "question": "q", "device_id": "d", "hours": 24})
+    graph._conn.set(MagicMock())
+    out = graph.retrieve_specific({"question": "q", "device_id": "d", "hours": 24})
     assert out["context"] == "ctx"
     assert out["meta"] == {"similar_readings": 5, "recent_readings": 3}
 
 
 @patch("app.ai.graph.retrieval.retrieve", return_value=None)
 def test_retrieve_specific_no_readings(mock_retrieve):
-    out = graph.retrieve_specific({"conn": MagicMock(), "question": "q", "device_id": "d", "hours": 24})
+    graph._conn.set(MagicMock())
+    out = graph.retrieve_specific({"question": "q", "device_id": "d", "hours": 24})
     assert out["meta"] == {"similar_readings": 0, "recent_readings": 0}
+
+
+# ── tracing ──────────────────────────────────────────────
+
+def test_tracing_passthrough_without_keys():
+    # No Langfuse keys in the test env, so @observe must be an identity wrapper.
+    from app.ai import tracing
+
+    @tracing.observe(name="x")
+    def f(a):
+        return a + 1
+
+    assert f(1) == 2

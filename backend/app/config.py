@@ -65,6 +65,14 @@ ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", "text-embedding-3-small")
 ANSWER_MODEL = os.environ.get("ANSWER_MODEL", "claude-haiku-4-5-20251001")
 
+# -----------------------------------------------------------------------------
+# Observability — optional Langfuse tracing of the query graph.
+# Enabled only when both keys are set; the graph runs untraced otherwise.
+# -----------------------------------------------------------------------------
+LANGFUSE_PUBLIC_KEY = os.environ.get("LANGFUSE_PUBLIC_KEY", "")
+LANGFUSE_SECRET_KEY = os.environ.get("LANGFUSE_SECRET_KEY", "")
+TRACING_ENABLED = bool(LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY)
+
 
 @lru_cache(maxsize=1)
 def get_openai():
