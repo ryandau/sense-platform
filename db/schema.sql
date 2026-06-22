@@ -1,4 +1,3 @@
--- sense.donohue.ai
 -- Generic IoT sensor platform schema
 -- PostgreSQL 17 + pgvector
 
@@ -143,6 +142,42 @@ CREATE TABLE alerts (
 );
 
 CREATE INDEX idx_alerts_device ON alerts(device_id, created_at DESC);
+
+-- ─────────────────────────────────────────
+-- BREAKPOINTS
+-- Database-driven derived metrics. The breakpoint engine reads these to
+-- compute readings.computed (e.g. EPA AQI from PM2.5, CO2 status bands).
+-- ─────────────────────────────────────────
+CREATE TABLE breakpoints (
+    id           UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    type_slug    VARCHAR(64) NOT NULL,
+    input_field  VARCHAR(64) NOT NULL,
+    output_field VARCHAR(64) NOT NULL,
+    bp_low       DECIMAL(12,4) NOT NULL,
+    bp_high      DECIMAL(12,4) NOT NULL,
+    idx_low      DECIMAL(12,4),
+    idx_high     DECIMAL(12,4),
+    category     VARCHAR(64),
+    interpolate  BOOLEAN NOT NULL DEFAULT TRUE,
+    sort_order   SMALLINT NOT NULL DEFAULT 0,
+    created_at   TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_breakpoints_lookup ON breakpoints(type_slug, input_field, sort_order);
+
+-- US EPA PM2.5 AQI breakpoints (interpolated) + CO2 status bands (categorical)
+INSERT INTO breakpoints (type_slug, input_field, output_field, bp_low, bp_high, idx_low, idx_high, category, interpolate, sort_order) VALUES
+('air_quality', 'pm2_5', 'aqi',     0.0,   12.0,    0,   50, 'Good',                           TRUE, 1),
+('air_quality', 'pm2_5', 'aqi',    12.1,   35.4,   51,  100, 'Moderate',                       TRUE, 2),
+('air_quality', 'pm2_5', 'aqi',    35.5,   55.4,  101,  150, 'Unhealthy for Sensitive Groups', TRUE, 3),
+('air_quality', 'pm2_5', 'aqi',    55.5,  150.4,  151,  200, 'Unhealthy',                      TRUE, 4),
+('air_quality', 'pm2_5', 'aqi',   150.5,  250.4,  201,  300, 'Very Unhealthy',                 TRUE, 5),
+('air_quality', 'pm2_5', 'aqi',   250.5,  500.4,  301,  500, 'Hazardous',                      TRUE, 6),
+('air_quality', 'co2_ppm', 'co2_status',    0.0,  799.9999, NULL, NULL, 'Good',       FALSE, 1),
+('air_quality', 'co2_ppm', 'co2_status',  800.0,  999.9999, NULL, NULL, 'Acceptable', FALSE, 2),
+('air_quality', 'co2_ppm', 'co2_status', 1000.0, 1499.9999, NULL, NULL, 'Poor',       FALSE, 3),
+('air_quality', 'co2_ppm', 'co2_status', 1500.0, 1999.9999, NULL, NULL, 'Very Poor',  FALSE, 4),
+('air_quality', 'co2_ppm', 'co2_status', 2000.0, 99999.0,   NULL, NULL, 'Dangerous',  FALSE, 5);
 
 -- ─────────────────────────────────────────
 -- SEED DATA — Device Types

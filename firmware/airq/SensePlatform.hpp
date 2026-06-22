@@ -33,7 +33,7 @@ public:
                 uint32_t battery_mv);
 
 private:
-    String _endpoint;   // e.g. "https://xxxxxxx.execute-api.ap-southeast-2.amazonaws.com/v1"
+    String _endpoint;   // e.g. "http://192.168.1.50:8000" (Sense Platform API; POSTs to /ingest)
     String _apiKey;
     String _deviceId;   // e.g. "airq-001"
     String _typeSlug;   // e.g. "air_quality"

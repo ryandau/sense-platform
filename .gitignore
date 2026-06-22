@@ -16,10 +16,6 @@ env/
 .env
 *.env.local
 
-# AWS CDK
-cdk.out/
-*.zip
-
 # macOS
 .DS_Store
 .AppleDouble
@@ -50,3 +46,6 @@ htmlcov/
 # Firmware
 firmware/airq/.pio/
 firmware/airq/data/db.json
+
+# Local DB extracts (contain data — never commit)
+backups/

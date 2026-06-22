@@ -6,21 +6,25 @@ of M5Stack's EzData cloud.
 
 ## Device Cycle
 
-**On battery** (power off between readings):
+**On USB (delay loop) — the current, reliable mode:**
 
-1. RTC alarm fires → device boots (~8 seconds)
-2. Connect WiFi, read SEN55 + SCD40 sensors
-3. POST reading to `/ingest` with API key auth
-4. Set next RTC alarm, cut power — device is fully off
-
-**On USB** (delay loop):
-
-1. Read sensors, POST to `/ingest`
+1. Read SEN55 + SCD40 sensors, POST to `/ingest` with API key auth
 2. Wait `sleep_interval` seconds
 3. Repeat (no reboot)
 
-The e-ink display shows a permanent QR code linking to the web dashboard.
-Drawn once on first boot, persists unpowered through all cycles.
+**On battery (RTC-wake cycle) — design goal, not yet reliable:**
+
+1. RTC alarm fires → device boots (~8 seconds)
+2. Connect WiFi, read sensors, POST to `/ingest`
+3. Set next RTC alarm, cut power — device fully off
+
+> Battery deep-sleep/RTC-wake doesn't wake dependably yet, so run on USB for now.
+> Fixing it is a future task.
+
+The e-ink display shows a permanent QR code linking to the dashboard
+(`dashboard_url`). Drawn once on first boot, it persists unpowered through all
+cycles. Since `dashboard_url` is typically a LAN address, the QR resolves from
+devices on the same network.
 
 ## Project Layout
 
@@ -62,17 +66,22 @@ Edit `data/db.json` before flashing. All settings are in the `sense` block:
 ```json
 {
   "sense": {
-    "endpoint": "https://YOUR_API_GATEWAY_URL/v1",
+    "endpoint": "http://192.168.1.50:8000",
     "api_key": "YOUR_API_KEY",
     "device_id": "airq-001",
     "latitude": -27.4698,
     "longitude": 153.0251,
     "location_label": "Annerley",
     "country_code": "AU",
-    "dashboard_url": "https://YOUR_DASHBOARD_URL"
+    "dashboard_url": "http://192.168.1.50:8000"
   }
 }
 ```
+
+`endpoint` is the Sense Platform API. For a self-hosted Docker stack this is the
+LAN IP of the machine running it, e.g. `http://192.168.1.50:8000` (the firmware
+POSTs to `<endpoint>/ingest`). `api_key` must match `SENSE_API_KEY` in the
+server's `.env`.
 
 Other config: WiFi (`wifi.ssid`, `wifi.password`), reading interval
 (`rtc.sleep_interval` in seconds), timezone (`ntp.tz`).

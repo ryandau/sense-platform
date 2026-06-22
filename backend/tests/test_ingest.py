@@ -6,48 +6,20 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from datetime import datetime, timezone
-from backend.app.api.ingest import (
+from backend.app.main import (
     BreakpointEngine,
     build_content_string,
     ReadingPayload,
 )
-import backend.app.api.ingest as mod
-
-
-def _seed_cache():
-    """Inject breakpoints into module cache so tests skip the DB."""
-    mod._breakpoint_cache = {
-        ("air_quality", "pm2_5", "aqi"): [
-            {"bp_low": 0, "bp_high": 12.0, "idx_low": 0, "idx_high": 50, "category": "Good", "interpolate": True},
-            {"bp_low": 12.1, "bp_high": 35.4, "idx_low": 51, "idx_high": 100, "category": "Moderate", "interpolate": True},
-            {"bp_low": 35.5, "bp_high": 55.4, "idx_low": 101, "idx_high": 150, "category": "Unhealthy for Sensitive Groups", "interpolate": True},
-            {"bp_low": 55.5, "bp_high": 150.4, "idx_low": 151, "idx_high": 200, "category": "Unhealthy", "interpolate": True},
-            {"bp_low": 150.5, "bp_high": 250.4, "idx_low": 201, "idx_high": 300, "category": "Very Unhealthy", "interpolate": True},
-            {"bp_low": 250.5, "bp_high": 500.4, "idx_low": 301, "idx_high": 500, "category": "Hazardous", "interpolate": True},
-        ],
-        ("air_quality", "pm2_5", "aqi_au_category"): [
-            {"bp_low": 0, "bp_high": 24.9999, "idx_low": None, "idx_high": None, "category": "Good", "interpolate": False},
-            {"bp_low": 25, "bp_high": 49.9999, "idx_low": None, "idx_high": None, "category": "Fair", "interpolate": False},
-            {"bp_low": 50, "bp_high": 99.9999, "idx_low": None, "idx_high": None, "category": "Poor", "interpolate": False},
-            {"bp_low": 100, "bp_high": 299.9999, "idx_low": None, "idx_high": None, "category": "Very Poor", "interpolate": False},
-            {"bp_low": 300, "bp_high": 999.9999, "idx_low": None, "idx_high": None, "category": "Extremely Poor", "interpolate": False},
-        ],
-        ("air_quality", "co2_ppm", "co2_status"): [
-            {"bp_low": 0, "bp_high": 799.9999, "idx_low": None, "idx_high": None, "category": "Good", "interpolate": False},
-            {"bp_low": 800, "bp_high": 999.9999, "idx_low": None, "idx_high": None, "category": "Acceptable", "interpolate": False},
-            {"bp_low": 1000, "bp_high": 1499.9999, "idx_low": None, "idx_high": None, "category": "Poor", "interpolate": False},
-            {"bp_low": 1500, "bp_high": 1999.9999, "idx_low": None, "idx_high": None, "category": "Very Poor", "interpolate": False},
-            {"bp_low": 2000, "bp_high": 99999, "idx_low": None, "idx_high": None, "category": "Dangerous", "interpolate": False},
-        ],
-    }
-    mod._breakpoint_cache_ts = float("inf")
+import backend.app.main as mod
+from backend.tests._breakpoints import seed_breakpoints
 
 
 engine = BreakpointEngine()
 
 
 def _compute(data):
-    _seed_cache()
+    seed_breakpoints(mod)
     return engine.compute("air_quality", data, None)
 
 

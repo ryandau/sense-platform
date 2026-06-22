@@ -1,9 +1,9 @@
 fastapi==0.115.0
-mangum==0.17.0
+uvicorn[standard]==0.30.0
 pydantic>=2.0.0
 psycopg2-binary==2.9.9
 pgvector==0.3.2
 httpx==0.27.0
-boto3==1.35.0
+# Optional AI layer — only used when OPENAI_API_KEY / ANTHROPIC_API_KEY are set.
 openai==1.50.0
-uvicorn==0.30.0
+anthropic==0.39.0

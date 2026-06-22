@@ -1,0 +1,71 @@
+# Sense Platform — portable, self-hostable stack.
+#
+#   docker compose up -d db          # start Postgres+pgvector
+#   ./scripts/db-setup.sh fresh      # or: ./scripts/db-setup.sh restore <dump.sql.gz>
+#   docker compose up -d api         # start the API + dashboard  ->  http://localhost:8000
+#
+# Optional free remote access:
+#   docker compose --profile tunnel up -d cloudflared   # needs TUNNEL_TOKEN in .env
+#
+# All config lives in .env (copy from .env.example). No AWS, no secrets manager.
+
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${PGUSER:-sense}
+      POSTGRES_PASSWORD: ${PGPASSWORD:-sense}
+      POSTGRES_DB: ${PGDATABASE:-sense}
+    volumes:
+      - sense-db-data:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    # Not published to the host by default — only the API (same Docker network)
+    # talks to it. Uncomment to connect a local SQL client.
+    # ports:
+    #   - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PGUSER:-sense} -d ${PGDATABASE:-sense}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    # Explicit resolvers — the AI calls need outbound DNS, and some hosts
+    # (notably Colima) don't forward container DNS reliably. Harmless elsewhere.
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    env_file: .env
+    environment:
+      # These override .env so the API always reaches the db container correctly.
+      PGHOST: db
+      PGPORT: "5432"
+      DB_SSLMODE: disable
+      FRONTEND_DIR: /srv/frontend
+    ports:
+      - "${API_PORT:-8000}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # Optional: free public HTTPS via Cloudflare Tunnel (no open ports).
+  # Create a tunnel in the Cloudflare Zero Trust dashboard, point its public
+  # hostname at http://api:8000, put the token in .env, then:
+  #   docker compose --profile tunnel up -d cloudflared
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    profiles: ["tunnel"]
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
+    depends_on:
+      - api
+
+volumes:
+  sense-db-data:

@@ -1,5 +1,5 @@
 """
-sense.donohue.ai — Sensor Faker
+Sense Platform — Sensor Faker
 Simulates realistic sensor data matching M5Stack Air Quality Kit v1.1
 (SEN55 + SCD40) output fields. Uses real baseline values with natural
 drift patterns for time-of-day, occupancy, and weather variation.

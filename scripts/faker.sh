@@ -10,38 +10,25 @@
 
 set -e
 
-STACK="SensePlatformStack"
-REGION="ap-southeast-2"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 FAKER_DIR="$SCRIPT_DIR/faker"
 PID_FILE="$SCRIPT_DIR/.faker.pid"
 
-get_output() {
-  aws cloudformation describe-stacks \
-    --stack-name "$STACK" \
-    --region "$REGION" \
-    --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue" \
-    --output text 2>/dev/null
-}
-
+# Sends to the local Docker stack. Override SENSE_URL to target another host
+# (e.g. SENSE_URL=http://192.168.1.50:8000 ./scripts/faker.sh once).
 load_env() {
-  API_URL=$(get_output "ApiUrl")
-  if [ -z "$API_URL" ]; then
-    echo "Could not find API URL in stack outputs."
-    exit 1
+  ENV_FILE="$PROJECT_DIR/.env"
+  if [ -f "$ENV_FILE" ]; then
+    set -a; . "$ENV_FILE"; set +a
   fi
-  INGEST_URL="${API_URL}ingest"
-
-  API_KEY=$(aws secretsmanager get-secret-value \
-    --secret-id "sense-platform/api-key" \
-    --region "$REGION" \
-    --query SecretString --output text 2>/dev/null)
+  BASE_URL="${SENSE_URL:-http://localhost:${API_PORT:-8000}}"
+  INGEST_URL="${BASE_URL%/}/ingest"
+  API_KEY="${SENSE_API_KEY:-}"
   if [ -z "$API_KEY" ]; then
-    echo "Could not read API key from Secrets Manager."
+    echo "SENSE_API_KEY not set. Add it to .env (or export it)."
     exit 1
   fi
-
   export INGEST_URL API_KEY
 }
 
