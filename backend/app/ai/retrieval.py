@@ -64,12 +64,9 @@ def retrieve(conn, question, device_id, hours):
     # Overall distribution first, so a vector sample of typical readings cannot
     # make the answer overlook extremes (e.g. hazardous spikes).
     parts = []
-    stats = field_statistics(conn, device_id)
-    if stats:
-        parts.append("=== OVERALL STATISTICS (all readings for this device) ===")
-        for s in stats.values():
-            unit = f" {s['unit']}" if s["unit"] else ""
-            parts.append(f"{s['label']}: average {s['avg']}{unit}, range {s['min']} to {s['max']}{unit}")
+    overview = overview_context(conn, device_id)
+    if overview:
+        parts.append(overview)
 
     parts.append("=== KNOWLEDGE BASE ===")
     for kb in knowledge:
@@ -144,3 +141,45 @@ def field_statistics(conn, device_id):
             "avg": float(avg),
         }
     return stats
+
+
+def recorded_categories(conn, device_id):
+    """
+    Distinct computed categorical values observed for a device, per metric
+    (e.g. aqi_category -> [Good, Moderate, ..., Hazardous]). Grounds the
+    interpretive health language an answer may use. Sensor-agnostic: derived
+    from whatever non-numeric values appear in readings.computed.
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT kv.key AS key, array_agg(DISTINCT kv.value) AS values "
+            "FROM readings r, jsonb_each_text(r.computed) AS kv "
+            "WHERE r.device_id = %s AND r.computed IS NOT NULL "
+            "AND kv.value !~ '^-?[0-9.]+$' "
+            "GROUP BY kv.key",
+            (device_id,),
+        )
+        rows = cur.fetchall()
+    return {r["key"]: sorted(r["values"]) for r in rows}
+
+
+def overview_context(conn, device_id):
+    """
+    Overall distribution stats + recorded categories as a context block, shared
+    by both /ask routes so analytical and specific answers are grounded in the
+    full distribution (including extremes), not just their own slice. Returns ''
+    when there is nothing to report.
+    """
+    parts = []
+    stats = field_statistics(conn, device_id)
+    if stats:
+        parts.append("=== OVERALL STATISTICS (all readings for this device) ===")
+        for s in stats.values():
+            unit = f" {s['unit']}" if s["unit"] else ""
+            parts.append(f"{s['label']}: average {s['avg']}{unit}, range {s['min']} to {s['max']}{unit}")
+    cats = recorded_categories(conn, device_id)
+    if cats:
+        parts.append("=== RECORDED CATEGORIES (computed across all readings) ===")
+        for key, values in cats.items():
+            parts.append(f"{key}: {', '.join(values)}")
+    return "\n\n".join(parts)

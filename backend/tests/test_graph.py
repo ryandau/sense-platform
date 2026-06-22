@@ -71,7 +71,8 @@ def test_classify_window_none_when_missing(mock_get):
 
 # ── analytical retrieval ─────────────────────────────────
 
-def test_retrieve_analytical_aggregate():
+@patch("app.ai.graph.retrieval.overview_context", return_value="")
+def test_retrieve_analytical_aggregate(mock_overview):
     conn, cur = _conn_with_row({"value": 9.3333, "n": 1200})
     graph._conn.set(conn)
     out = graph.retrieve_analytical(
@@ -86,7 +87,8 @@ def test_retrieve_analytical_aggregate():
     assert "make_interval" in sql  # stated window -> time filter applied
 
 
-def test_retrieve_analytical_all_time_when_no_window():
+@patch("app.ai.graph.retrieval.overview_context", return_value="")
+def test_retrieve_analytical_all_time_when_no_window(mock_overview):
     conn, cur = _conn_with_row({"value": 21.5, "n": 50000})
     graph._conn.set(conn)
     out = graph.retrieve_analytical(
@@ -97,7 +99,8 @@ def test_retrieve_analytical_all_time_when_no_window():
     assert "make_interval" not in cur.execute.call_args[0][0]  # no time filter
 
 
-def test_retrieve_analytical_no_data():
+@patch("app.ai.graph.retrieval.overview_context", return_value="")
+def test_retrieve_analytical_no_data(mock_overview):
     conn, _ = _conn_with_row({"value": None, "n": 0})
     graph._conn.set(conn)
     out = graph.retrieve_analytical(
@@ -106,7 +109,8 @@ def test_retrieve_analytical_no_data():
     assert "No pm2_5 readings" in out["context"]
 
 
-def test_retrieve_analytical_count_uses_count_query():
+@patch("app.ai.graph.retrieval.overview_context", return_value="")
+def test_retrieve_analytical_count_uses_count_query(mock_overview):
     conn, cur = _conn_with_row({"value": 42, "n": 42})
     graph._conn.set(conn)
     out = graph.retrieve_analytical(

@@ -48,3 +48,17 @@ def test_field_statistics_skips_fields_with_no_numeric_data():
 def test_field_statistics_no_device_type():
     conn, _ = _conn([{"type_slug": None}])
     assert retrieval.field_statistics(conn, "ghost") == {}
+
+
+def test_recorded_categories():
+    cur = MagicMock()
+    cur.fetchall.return_value = [
+        {"key": "aqi_category", "values": ["Moderate", "Good", "Hazardous"]},
+        {"key": "co2_status", "values": ["Good", "Poor"]},
+    ]
+    conn = MagicMock()
+    conn.cursor.return_value.__enter__ = lambda s: cur
+    conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+    out = retrieval.recorded_categories(conn, "airq-001")
+    assert out["aqi_category"] == ["Good", "Hazardous", "Moderate"]  # sorted
+    assert out["co2_status"] == ["Good", "Poor"]

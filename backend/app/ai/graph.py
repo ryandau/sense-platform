@@ -61,11 +61,12 @@ _SYNTHESISE_PROMPT = (
     "- Never say 'your' or mention the location name.\n\n"
     "How to use the data:\n"
     "- The reader can already see the current numbers on screen. Do not repeat them.\n"
-    "- The context may be an aggregate result, OVERALL STATISTICS, or a set of readings "
-    "labelled RECENT and RELEVANT. Answer from whatever is provided.\n"
-    "- When OVERALL STATISTICS show the range reached an unhealthy or hazardous level, say "
-    "the readings have spiked that high at times, even if the average is good. Do not call "
-    "the air safe overall when it has reached harmful levels.\n"
+    "- The context may include an aggregate result, OVERALL STATISTICS, RECORDED CATEGORIES, "
+    "and readings labelled RECENT and RELEVANT. Answer from whatever is provided.\n"
+    "- Answer the question directly first. If OVERALL STATISTICS show the range reached an "
+    "unhealthy or hazardous level, add — as a secondary point — that the readings have spiked "
+    "that high at times. Do not call the air safe if it has reached harmful levels, but do not "
+    "present rare spikes as the normal condition either.\n"
     "- Only mention a reading if it is relevant to the question or if its computed category "
     "indicates a concern.\n"
     "- If the context contains enough information to identify a likely cause, state it clearly.\n"
@@ -150,12 +151,16 @@ def retrieve_analytical(state: AskState) -> dict:
     value, n = row["value"], row["n"]
     span = "all time" if window is None else f"the last {window} hours"
     if value is None or not n:
-        context = f"No {field or 'matching'} readings over {span}."
+        line = f"No {field or 'matching'} readings over {span}."
         value = None
     else:
         value = round(float(value), 2)
-        context = (f"Aggregate over {span}: {plan['aggregation']} of "
-                   f"{field or 'readings'} = {value} (from {n} readings).")
+        line = (f"Aggregate over {span}: {plan['aggregation']} of "
+                f"{field or 'readings'} = {value} (from {n} readings).")
+
+    # Ground the answer in the full distribution as well as the aggregate.
+    overview = retrieval.overview_context(_conn.get(), state["device_id"])
+    context = f"{overview}\n\n{line}" if overview else line
     return {"context": context, "meta": {
         "field": field, "aggregation": plan["aggregation"],
         "window_hours": window, "value": value, "readings": n}}

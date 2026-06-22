@@ -68,8 +68,16 @@ def main():
         llm=llm,
         embeddings=embeddings,
     )
-    print("=== RAGAS scores ===")
+    print("=== RAGAS scores (mean) ===")
     print(result)
+
+    df = result.to_pandas()
+    metric_cols = [c for c in df.columns
+                   if c not in ("user_input", "response", "retrieved_contexts", "reference")]
+    print("\n=== per question ===")
+    for _, row in df.iterrows():
+        scores = "  ".join(f"{c.split('_')[0]}={row[c]:.2f}" for c in metric_cols)
+        print(f"  {row['user_input'][:46]:<48} {scores}")
 
 
 if __name__ == "__main__":
