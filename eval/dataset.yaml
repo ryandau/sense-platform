@@ -1,0 +1,10 @@
+# Evaluation question set for the /ask query layer.
+# A mix of specific (vector-search) and analytical (aggregation) questions.
+device_id: airq-001
+questions:
+  - question: When was PM2.5 highest and how bad did it get?
+  - question: How is the air quality right now?
+  - question: Were there any unhealthy air quality periods?
+  - question: What has the average PM2.5 been over the past 90 days?
+  - question: What was the highest CO2 reading recorded?
+  - question: How many readings were taken in the last month?

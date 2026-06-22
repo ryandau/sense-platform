@@ -95,5 +95,18 @@ services:
       db:
         condition: service_healthy
 
+  # Optional: RAGAS evaluation of /ask (development tool). Run on demand:
+  #   docker compose --profile eval run --rm eval
+  eval:
+    build:
+      context: .
+      dockerfile: eval/Dockerfile
+    profiles: ["eval"]
+    env_file: .env
+    environment:
+      SENSE_URL: http://api:8000
+    depends_on:
+      - api
+
 volumes:
   sense-db-data:

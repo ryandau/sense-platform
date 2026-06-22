@@ -109,7 +109,7 @@ Each phase is independently mergeable.
   and the analytical retrieval branch.
 - [x] **Phase 2 — Tracing.** Optional Langfuse instrumentation of the graph.
 - [x] **Phase 3 — MCP server.** Tools over the shared query layer.
-- [ ] **Phase 4 — Evaluation.** RAGAS harness and an on-demand eval task.
+- [x] **Phase 4 — Evaluation.** RAGAS harness and an on-demand eval task.
 
 ## Notes
 

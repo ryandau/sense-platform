@@ -359,6 +359,8 @@ class AskPayload(BaseModel):
     question: str = Field(..., min_length=1, max_length=1000)
     device_id: Optional[str] = None
     hours: int = Field(default=24, ge=1, le=168)
+    # Return the retrieved context (used by the evaluation harness).
+    include_context: bool = False
     # Ignored; kept so the dashboard's {action:'ask', ...} body validates.
     action: Optional[str] = None
 
@@ -373,12 +375,15 @@ def ask(payload: AskPayload):
             raise HTTPException(status_code=404, detail="No devices found")
 
         result = ask_graph.run(conn, payload.question, device_id, payload.hours)
-        return {
+        response = {
             "answer": result["answer"],
             "device_id": device_id,
             "route": result["route"],
             "retrieval": result["meta"],
         }
+        if payload.include_context:
+            response["context"] = result["context"]
+        return response
     except HTTPException:
         raise
     except Exception as e:

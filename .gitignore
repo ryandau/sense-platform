@@ -49,3 +49,5 @@ firmware/airq/data/db.json
 
 # Local DB extracts (contain data — never commit)
 backups/
+
+venv-eval/

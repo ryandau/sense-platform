@@ -205,6 +205,7 @@ def run(conn, question, device_id, hours):
     token = _conn.set(conn)
     try:
         final = GRAPH.invoke({"question": question, "device_id": device_id, "hours": hours})
-        return {"answer": final["answer"], "route": final["route"], "meta": final.get("meta", {})}
+        return {"answer": final["answer"], "route": final["route"],
+                "meta": final.get("meta", {}), "context": final.get("context", "")}
     finally:
         _conn.reset(token)
