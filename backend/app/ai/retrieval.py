@@ -61,7 +61,17 @@ def retrieve(conn, question, device_id, hours):
     if not similar and not recent:
         return None
 
-    parts = ["=== KNOWLEDGE BASE ==="]
+    # Overall distribution first, so a vector sample of typical readings cannot
+    # make the answer overlook extremes (e.g. hazardous spikes).
+    parts = []
+    stats = field_statistics(conn, device_id)
+    if stats:
+        parts.append("=== OVERALL STATISTICS (all readings for this device) ===")
+        for s in stats.values():
+            unit = f" {s['unit']}" if s["unit"] else ""
+            parts.append(f"{s['label']}: average {s['avg']}{unit}, range {s['min']} to {s['max']}{unit}")
+
+    parts.append("=== KNOWLEDGE BASE ===")
     for kb in knowledge:
         parts.append(f"## {kb['title']}\n{kb['content']}")
 
@@ -87,3 +97,50 @@ def retrieve(conn, question, device_id, hours):
         "similar_readings": len(similar),
         "recent_readings": len(recent),
     }
+
+
+def field_statistics(conn, device_id):
+    """
+    Return min/max/avg for each numeric field over ALL of a device's readings,
+    keyed by field. Computed generically from the device type's fields, so it is
+    sensor-agnostic. Non-numeric values are filtered out before casting.
+    """
+    with conn.cursor() as cur:
+        cur.execute("SELECT type_slug FROM devices WHERE device_id = %s", (device_id,))
+        row = cur.fetchone()
+        if not row or not row.get("type_slug"):
+            return {}
+        cur.execute("SELECT fields FROM device_types WHERE slug = %s", (row["type_slug"],))
+        frow = cur.fetchone()
+        fields_meta = (frow or {}).get("fields") or {}
+        fields = list(fields_meta.keys())
+        if not fields:
+            return {}
+
+        numeric = r"^-?[0-9]+\.?[0-9]*$"   # only cast numeric-looking values
+        selects, params = [], []
+        for i, f in enumerate(fields):
+            selects.append(
+                f"MIN((data->>%s)::numeric) FILTER (WHERE data->>%s ~ %s) AS min_{i}, "
+                f"MAX((data->>%s)::numeric) FILTER (WHERE data->>%s ~ %s) AS max_{i}, "
+                f"ROUND(AVG((data->>%s)::numeric) FILTER (WHERE data->>%s ~ %s), 2) AS avg_{i}"
+            )
+            params += [f, f, numeric, f, f, numeric, f, f, numeric]
+        params.append(device_id)
+        cur.execute("SELECT " + ", ".join(selects) + " FROM readings WHERE device_id = %s", params)
+        vals = cur.fetchone()
+
+    stats = {}
+    for i, f in enumerate(fields):
+        avg = vals.get(f"avg_{i}")
+        if avg is None:
+            continue  # no numeric readings for this field
+        meta = fields_meta.get(f, {})
+        stats[f] = {
+            "label": meta.get("label", f),
+            "unit": meta.get("unit", ""),
+            "min": float(vals[f"min_{i}"]),
+            "max": float(vals[f"max_{i}"]),
+            "avg": float(avg),
+        }
+    return stats
