@@ -20,7 +20,8 @@ from pydantic import BaseModel, Field, field_validator
 import psycopg2
 from psycopg2.extras import Json
 
-from app import config
+from app import config, queries
+from app.ai import retrieval
 from app.config import get_db, generate_embedding
 
 
@@ -307,70 +308,51 @@ def health():
 
 @app.get("/devices")
 def list_devices():
+    conn = get_db()
     try:
-        conn = get_db()
-        with conn.cursor() as cur:
-            cur.execute("""
-                SELECT d.*, COUNT(r.id) as reading_count,
-                       MAX(r.recorded_at) as last_reading_at
-                FROM devices d
-                LEFT JOIN readings r ON r.device_id = d.device_id
-                GROUP BY d.id ORDER BY d.last_seen_at DESC
-            """)
-            rows = cur.fetchall()
-        conn.close()
-        return [dict(r) for r in rows]
+        return queries.list_devices(conn)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
 
 
 @app.get("/devices/{device_id}/latest")
 def latest_reading(device_id: str):
+    conn = get_db()
     try:
-        conn = get_db()
-        with conn.cursor() as cur:
-            cur.execute("""
-                SELECT * FROM readings WHERE device_id = %s
-                ORDER BY recorded_at DESC LIMIT 1
-            """, (device_id,))
-            row = cur.fetchone()
-        conn.close()
+        row = queries.latest_reading(conn, device_id)
         if not row:
             raise HTTPException(status_code=404, detail="No readings found")
-        return dict(row)
+        return row
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
 
 
 @app.get("/devices/{device_id}/history")
 def reading_history(device_id: str, limit: int = 100):
+    conn = get_db()
     try:
-        conn = get_db()
-        with conn.cursor() as cur:
-            cur.execute("""
-                SELECT * FROM readings WHERE device_id = %s
-                ORDER BY recorded_at DESC LIMIT %s
-            """, (device_id, min(limit, 1000)))
-            rows = cur.fetchall()
-        conn.close()
-        return [dict(r) for r in rows]
+        return queries.reading_history(conn, device_id, limit)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
 
 
 @app.get("/types")
 def list_device_types():
+    conn = get_db()
     try:
-        conn = get_db()
-        with conn.cursor() as cur:
-            cur.execute("SELECT * FROM device_types ORDER BY name")
-            rows = cur.fetchall()
-        conn.close()
-        return [dict(r) for r in rows]
+        return queries.list_device_types(conn)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
 
 
 class AskPayload(BaseModel):
@@ -421,73 +403,13 @@ def ask(payload: AskPayload):
     """RAG answer over the sensor data."""
     conn = get_db()
     try:
-        with conn.cursor() as cur:
-            device_id = payload.device_id
-            if not device_id:
-                cur.execute("SELECT device_id FROM devices ORDER BY last_seen_at DESC LIMIT 1")
-                row = cur.fetchone()
-                if not row:
-                    raise HTTPException(status_code=404, detail="No devices found")
-                device_id = row["device_id"]
+        device_id = retrieval.resolve_device_id(conn, payload.device_id)
+        if not device_id:
+            raise HTTPException(status_code=404, detail="No devices found")
 
-            q_embedding = generate_embedding(payload.question)
-
-            # Vector similarity search — most relevant readings to the question.
-            cur.execute("""
-                SELECT re.content, r.recorded_at
-                FROM reading_embeddings re
-                JOIN readings r ON r.id = re.reading_id
-                WHERE r.device_id = %s AND re.embedding IS NOT NULL
-                ORDER BY re.embedding <=> %s::vector
-                LIMIT 30
-            """, (device_id, str(q_embedding)))
-            similar_readings = cur.fetchall()
-
-            # Most recent readings for current-state questions.
-            cur.execute("""
-                SELECT re.content, r.recorded_at
-                FROM reading_embeddings re
-                JOIN readings r ON r.id = re.reading_id
-                WHERE r.device_id = %s
-                  AND r.recorded_at > NOW() - INTERVAL '%s hours'
-                ORDER BY r.recorded_at DESC
-                LIMIT 10
-            """, (device_id, payload.hours))
-            recent_readings = cur.fetchall()
-
-            cur.execute("""
-                SELECT title, content FROM knowledge_base
-                WHERE type_slug IS NULL
-                   OR type_slug = (SELECT type_slug FROM devices WHERE device_id = %s)
-                ORDER BY category, title
-            """, (device_id,))
-            knowledge = cur.fetchall()
-        conn.close()
-
-        if not similar_readings and not recent_readings:
+        result = retrieval.retrieve(conn, payload.question, device_id, payload.hours)
+        if result is None:
             raise HTTPException(status_code=404, detail="No readings found")
-
-        context_parts = ["=== KNOWLEDGE BASE ==="]
-        for kb in knowledge:
-            context_parts.append(f"## {kb['title']}\n{kb['content']}")
-
-        seen = set()
-        recent, relevant = [], []
-        for r in recent_readings:
-            if r["content"] not in seen:
-                seen.add(r["content"])
-                recent.append(r["content"])
-        for r in similar_readings:
-            if r["content"] not in seen:
-                seen.add(r["content"])
-                relevant.append(r["content"])
-
-        context_parts.append("\n=== MOST RECENT READINGS ===")
-        context_parts.extend(recent)
-        if relevant:
-            context_parts.append("\n=== MOST RELEVANT READINGS (by similarity to question) ===")
-            context_parts.extend(relevant)
-        context = "\n\n".join(context_parts)
 
         message = config.get_anthropic().messages.create(
             model=config.ANSWER_MODEL,
@@ -495,22 +417,22 @@ def ask(payload: AskPayload):
             system=_ASK_SYSTEM_PROMPT,
             messages=[{
                 "role": "user",
-                "content": f"Sensor data:\n\n{context}\n\n---\n\nQuestion: {payload.question}",
+                "content": f"Sensor data:\n\n{result['context']}\n\n---\n\nQuestion: {payload.question}",
             }],
         )
         answer = message.content[0].text if message.content else "No response."
         return {
             "answer": answer,
             "device_id": device_id,
-            "similar_readings": len(similar_readings),
-            "recent_readings": len(recent_readings),
+            "similar_readings": result["similar_readings"],
+            "recent_readings": result["recent_readings"],
         }
     except HTTPException:
-        conn.close()
         raise
     except Exception as e:
-        conn.close()
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
 
 
 # -----------------------------------------------------------------------------
