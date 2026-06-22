@@ -13,6 +13,7 @@ pipeline and the `/ask` endpoint require OpenAI and Anthropic API keys.
 - [3. Start the application](#3-start-the-application)
 - [4. Connect a device](#4-connect-a-device)
 - [5. Remote access (optional)](#5-remote-access-optional)
+- [6. MCP server (optional)](#6-mcp-server-optional)
 - [Operations](#operations)
 - [Troubleshooting](#troubleshooting)
 
@@ -107,6 +108,36 @@ dashboard remotely without exposing inbound ports, use a Cloudflare Tunnel:
 
 The dashboard is then served over HTTPS at your chosen hostname, while devices
 continue to post to the local address.
+
+## 6. MCP server (optional)
+
+The platform can expose its data to [Model Context Protocol](https://modelcontextprotocol.io)
+clients (such as Claude Desktop) as tools: `list_devices`, `latest_reading`,
+`reading_history`, `aqi_status`, and `ask`.
+
+Over HTTP (for networked clients):
+
+```bash
+docker compose --profile mcp up -d mcp     # serves http://localhost:8001/mcp
+```
+
+Over stdio (for a local client like Claude Desktop), run the server directly and
+add it to the client's MCP configuration, for example:
+
+```json
+{
+  "mcpServers": {
+    "sense-platform": {
+      "command": "python",
+      "args": ["-m", "app.mcp_server"],
+      "cwd": "/path/to/sense-platform/backend",
+      "env": { "MCP_TRANSPORT": "stdio" }
+    }
+  }
+}
+```
+
+The server reads the same `.env` configuration and requires the AI keys.
 
 ## Operations
 

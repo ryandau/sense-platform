@@ -67,5 +67,33 @@ services:
     depends_on:
       - api
 
+  # Optional: MCP server over HTTP, exposing the data as tools to MCP clients.
+  #   docker compose --profile mcp up -d mcp
+  # (For a local stdio client such as Claude Desktop, run the server directly:
+  #  python -m app.mcp_server)
+  mcp:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    profiles: ["mcp"]
+    command: ["python", "-m", "app.mcp_server"]
+    env_file: .env
+    environment:
+      PGHOST: db
+      PGPORT: "5432"
+      DB_SSLMODE: disable
+      MCP_TRANSPORT: streamable-http
+      MCP_HOST: "0.0.0.0"
+      MCP_PORT: "8001"
+    ports:
+      - "${MCP_PORT:-8001}:8001"
+    # The image healthcheck targets the API on :8000; not applicable here.
+    healthcheck:
+      disable: true
+    depends_on:
+      db:
+        condition: service_healthy
+
 volumes:
   sense-db-data:

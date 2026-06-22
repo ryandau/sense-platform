@@ -1,12 +1,14 @@
 fastapi==0.115.0
-uvicorn[standard]==0.30.0
+uvicorn[standard]==0.32.1
 pydantic>=2.0.0
 psycopg2-binary==2.9.9
 pgvector==0.3.2
-httpx==0.27.0
+httpx==0.28.1
 # AI layer — required (embeddings, answer generation, query routing).
 openai==1.50.0
 anthropic==0.39.0
 langgraph==1.2.6
+# MCP server — exposes the data as tools (python -m app.mcp_server).
+mcp==1.28.0
 # Optional observability — only used when LANGFUSE_* keys are set.
 langfuse==4.9.1

@@ -108,7 +108,7 @@ Each phase is independently mergeable.
 - [x] **Phase 1 — Routed `/ask`.** Add the LangGraph graph with classification
   and the analytical retrieval branch.
 - [x] **Phase 2 — Tracing.** Optional Langfuse instrumentation of the graph.
-- [ ] **Phase 3 — MCP server.** Tools over the shared query layer.
+- [x] **Phase 3 — MCP server.** Tools over the shared query layer.
 - [ ] **Phase 4 — Evaluation.** RAGAS harness and an on-demand eval task.
 
 ## Notes
