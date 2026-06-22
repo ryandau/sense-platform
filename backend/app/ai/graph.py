@@ -29,9 +29,9 @@ _conn = contextvars.ContextVar("ask_conn")
 # as an identifier, so it MUST come from this fixed set (never from user input).
 _AGGREGATIONS = {"avg": "AVG", "min": "MIN", "max": "MAX", "sum": "SUM", "count": "COUNT"}
 
-# Window for analytical questions that don't state one (one week).
-_DEFAULT_WINDOW_HOURS = 168
-_MAX_WINDOW_HOURS = 8760  # one year
+# Cap for an explicitly-stated window (one year). With no stated window the
+# analytical branch aggregates over all readings rather than a recent default.
+_MAX_WINDOW_HOURS = 8760
 
 _CLASSIFY_PROMPT = (
     "Classify a question about air-quality sensor data, then return ONLY a JSON object.\n\n"
@@ -113,43 +113,45 @@ def classify(state: AskState) -> dict:
         return {"route": "analytical", "plan": {
             "field": field,
             "aggregation": agg,
-            "window_hours": int(window) if isinstance(window, (int, float)) else _DEFAULT_WINDOW_HOURS,
+            # None means "no stated window" -> aggregate over all readings.
+            "window_hours": int(window) if isinstance(window, (int, float)) else None,
         }}
     return {"route": "specific", "plan": None}
 
 
 @tracing.observe(name="retrieve_analytical")
 def retrieve_analytical(state: AskState) -> dict:
-    """Run a parameterised aggregation. The aggregate is from a fixed allow-list;
-    the field is bound as a value, so the query is injection-safe."""
+    """Run a parameterised aggregation. The aggregate is from a fixed allow-list
+    and the field is bound as a value, so the query is injection-safe. With no
+    stated window, aggregate over all readings rather than a recent default."""
     plan = state["plan"]
     agg = _AGGREGATIONS[plan["aggregation"]]
     field = plan["field"]
-    window = max(1, min(int(plan["window_hours"]), _MAX_WINDOW_HOURS))
+    raw = plan.get("window_hours")
+    window = None if raw is None else max(1, min(int(raw), _MAX_WINDOW_HOURS))
+
+    time_sql = "" if window is None else " AND recorded_at > NOW() - make_interval(hours => %(window)s)"
+    params = {"device_id": state["device_id"], "field": field, "window": window}
+    if agg == "COUNT":
+        sql = ("SELECT COUNT(*) AS value, COUNT(*) AS n FROM readings "
+               "WHERE device_id = %(device_id)s" + time_sql)
+    else:
+        sql = (f"SELECT {agg}((data->>%(field)s)::numeric) AS value, "
+               "COUNT(*) FILTER (WHERE data ? %(field)s) AS n FROM readings "
+               "WHERE device_id = %(device_id)s" + time_sql)
 
     with _conn.get().cursor() as cur:
-        if agg == "COUNT":
-            cur.execute(
-                "SELECT COUNT(*) AS value, COUNT(*) AS n FROM readings "
-                "WHERE device_id = %s AND recorded_at > NOW() - make_interval(hours => %s)",
-                (state["device_id"], window),
-            )
-        else:
-            cur.execute(
-                f"SELECT {agg}((data->>%s)::numeric) AS value, "
-                "COUNT(*) FILTER (WHERE data ? %s) AS n FROM readings "
-                "WHERE device_id = %s AND recorded_at > NOW() - make_interval(hours => %s)",
-                (field, field, state["device_id"], window),
-            )
+        cur.execute(sql, params)
         row = cur.fetchone()
 
     value, n = row["value"], row["n"]
+    span = "all time" if window is None else f"the last {window} hours"
     if value is None or not n:
-        context = f"No {field or 'matching'} readings in the last {window} hours."
+        context = f"No {field or 'matching'} readings over {span}."
         value = None
     else:
         value = round(float(value), 2)
-        context = (f"Aggregate over the last {window} hours: {plan['aggregation']} of "
+        context = (f"Aggregate over {span}: {plan['aggregation']} of "
                    f"{field or 'readings'} = {value} (from {n} readings).")
     return {"context": context, "meta": {
         "field": field, "aggregation": plan["aggregation"],

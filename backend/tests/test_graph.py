@@ -62,11 +62,11 @@ def test_classify_analytical_without_field_falls_back(mock_get):
 
 
 @patch("app.config.get_anthropic")
-def test_classify_defaults_window_when_missing(mock_get):
+def test_classify_window_none_when_missing(mock_get):
     mock_get.return_value = _anthropic_returning(
         '{"route":"analytical","field":"pm2_5","aggregation":"max","window_hours":null}')
     out = graph.classify({"question": "highest pm2.5"})
-    assert out["plan"]["window_hours"] == graph._DEFAULT_WINDOW_HOURS
+    assert out["plan"]["window_hours"] is None
 
 
 # ── analytical retrieval ─────────────────────────────────
@@ -81,8 +81,20 @@ def test_retrieve_analytical_aggregate():
     assert "avg of pm2_5" in out["context"]
     # aggregate is a fixed allow-list identifier; field is a bound parameter
     sql, params = cur.execute.call_args[0]
-    assert "AVG((data->>%s)::numeric)" in sql
-    assert "pm2_5" in params
+    assert "AVG((data->>%(field)s)::numeric)" in sql
+    assert params["field"] == "pm2_5"
+    assert "make_interval" in sql  # stated window -> time filter applied
+
+
+def test_retrieve_analytical_all_time_when_no_window():
+    conn, cur = _conn_with_row({"value": 21.5, "n": 50000})
+    graph._conn.set(conn)
+    out = graph.retrieve_analytical(
+        {"plan": {"field": "temperature", "aggregation": "avg", "window_hours": None}, "device_id": "d"})
+    assert out["meta"]["value"] == 21.5
+    assert out["meta"]["window_hours"] is None
+    assert "all time" in out["context"]
+    assert "make_interval" not in cur.execute.call_args[0][0]  # no time filter
 
 
 def test_retrieve_analytical_no_data():
