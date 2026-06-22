@@ -22,7 +22,7 @@ CREATE TABLE device_types (
 -- {
 --   "pm2_5":        { "unit": "μg/m³",  "label": "PM2.5",        "range": [0, 1000] },
 --   "co2_ppm":      { "unit": "ppm",    "label": "CO2",           "range": [0, 40000] },
---   "temperature_c":{ "unit": "°C",     "label": "Temperature",   "range": [-40, 85] }
+--   "temperature":  { "unit": "°C",     "label": "Temperature",   "range": [-40, 85] }
 -- }
 
 -- ─────────────────────────────────────────
@@ -36,6 +36,7 @@ CREATE TABLE devices (
     name         VARCHAR(128),                  -- "Living Room", "Back Garden"
     firmware     VARCHAR(64),                   -- "esphome-1.0", "faker", "custom"
     metadata     JSONB,                         -- anything extra, hardware specs etc
+    timezone     VARCHAR(64),                   -- IANA tz for local timestamps, e.g. "Australia/Brisbane"
     created_at   TIMESTAMPTZ DEFAULT NOW(),
     last_seen_at TIMESTAMPTZ
 );
@@ -194,8 +195,8 @@ INSERT INTO device_types (slug, name, description, fields) VALUES
    "co2_ppm":       {"unit": "ppm",   "label": "CO2",         "range": [0, 40000]},
    "voc_index":     {"unit": "idx",   "label": "VOC Index",   "range": [0, 500]},
    "nox_index":     {"unit": "idx",   "label": "NOx Index",   "range": [0, 500]},
-   "temperature_c": {"unit": "°C",    "label": "Temperature", "range": [-40, 85]},
-   "humidity_pct":  {"unit": "%RH",   "label": "Humidity",    "range": [0, 100]}
+   "temperature":   {"unit": "°C",    "label": "Temperature", "range": [-40, 85]},
+   "humidity":      {"unit": "%RH",   "label": "Humidity",    "range": [0, 100]}
  }'::jsonb),
 
 ('soil', 'Soil Sensor',

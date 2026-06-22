@@ -136,8 +136,8 @@ def field_statistics(conn, device_id):
         stats[f] = {
             "label": meta.get("label", f),
             "unit": meta.get("unit", ""),
-            "min": float(vals[f"min_{i}"]),
-            "max": float(vals[f"max_{i}"]),
+            "min": round(float(vals[f"min_{i}"]), 2),
+            "max": round(float(vals[f"max_{i}"]), 2),
             "avg": float(avg),
         }
     return stats
