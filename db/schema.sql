@@ -125,26 +125,6 @@ CREATE INDEX idx_knowledge_type
     ON knowledge_base(type_slug, category);
 
 -- ─────────────────────────────────────────
--- ALERTS
--- Threshold breaches, anomalies, events
--- ─────────────────────────────────────────
-CREATE TABLE alerts (
-    id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    reading_id  UUID REFERENCES readings(id),
-    device_id   VARCHAR(64) REFERENCES devices(device_id),
-    type_slug   VARCHAR(64),
-    field       VARCHAR(64),                  -- which field triggered the alert
-    value       DECIMAL(12,4),               -- the value that triggered it
-    threshold   DECIMAL(12,4),               -- the threshold that was breached
-    severity    VARCHAR(16),                 -- "info", "warning", "critical"
-    message     TEXT,
-    acknowledged_at TIMESTAMPTZ,
-    created_at  TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE INDEX idx_alerts_device ON alerts(device_id, created_at DESC);
-
--- ─────────────────────────────────────────
 -- BREAKPOINTS
 -- Database-driven derived metrics. The breakpoint engine reads these to
 -- compute readings.computed (e.g. EPA AQI from PM2.5, CO2 status bands).
@@ -197,46 +177,10 @@ INSERT INTO device_types (slug, name, description, fields) VALUES
    "nox_index":     {"unit": "idx",   "label": "NOx Index",   "range": [0, 500]},
    "temperature":   {"unit": "°C",    "label": "Temperature", "range": [-40, 85]},
    "humidity":      {"unit": "%RH",   "label": "Humidity",    "range": [0, 100]}
- }'::jsonb),
-
-('soil', 'Soil Sensor',
- 'Monitors soil moisture, temperature, pH and nutrients',
- '{
-   "moisture_pct":  {"unit": "%",    "label": "Moisture",     "range": [0, 100]},
-   "temperature_c": {"unit": "°C",   "label": "Temperature",  "range": [-20, 60]},
-   "ph":            {"unit": "pH",   "label": "pH",           "range": [0, 14]},
-   "nitrogen_ppm":  {"unit": "ppm",  "label": "Nitrogen",     "range": [0, 1000]},
-   "phosphorus_ppm":{"unit": "ppm",  "label": "Phosphorus",   "range": [0, 1000]},
-   "potassium_ppm": {"unit": "ppm",  "label": "Potassium",    "range": [0, 1000]}
- }'::jsonb),
-
-('water_quality', 'Water Quality Monitor',
- 'Monitors pH, turbidity, dissolved oxygen and temperature',
- '{
-   "ph":            {"unit": "pH",    "label": "pH",               "range": [0, 14]},
-   "turbidity_ntu": {"unit": "NTU",   "label": "Turbidity",        "range": [0, 1000]},
-   "dissolved_o2":  {"unit": "mg/L",  "label": "Dissolved Oxygen", "range": [0, 20]},
-   "temperature_c": {"unit": "°C",    "label": "Temperature",      "range": [-2, 50]},
-   "conductivity":  {"unit": "μS/cm", "label": "Conductivity",     "range": [0, 10000]},
-   "tds_ppm":       {"unit": "ppm",   "label": "Total Dissolved Solids", "range": [0, 2000]}
- }'::jsonb),
-
-('noise', 'Noise Monitor',
- 'Monitors ambient sound levels and frequency',
- '{
-   "db_avg":        {"unit": "dB",   "label": "Average Level",  "range": [0, 140]},
-   "db_peak":       {"unit": "dB",   "label": "Peak Level",     "range": [0, 140]},
-   "db_min":        {"unit": "dB",   "label": "Minimum Level",  "range": [0, 140]}
- }'::jsonb),
-
-('environment', 'Environment Monitor',
- 'General purpose temperature, humidity and pressure monitoring',
- '{
-   "temperature_c": {"unit": "°C",   "label": "Temperature", "range": [-40, 85]},
-   "humidity_pct":  {"unit": "%RH",  "label": "Humidity",    "range": [0, 100]},
-   "pressure_hpa":  {"unit": "hPa",  "label": "Pressure",    "range": [300, 1100]},
-   "dew_point_c":   {"unit": "°C",   "label": "Dew Point",   "range": [-40, 60]}
  }'::jsonb);
+
+-- Additional sensor types are added the same way — the schema is type-agnostic;
+-- readings.data is JSONB, so a new device_type only needs a row here.
 
 -- ─────────────────────────────────────────
 -- SEED DATA — Knowledge Base
@@ -269,39 +213,4 @@ INSERT INTO knowledge_base (type_slug, category, title, content) VALUES
   Combined pollution (PM + gases): Combination HEPA + activated carbon unit.
   For Almaty-type pollution (PM + coal gases): Combination filter essential.
   Replace HEPA filters every 6-12 months depending on pollution load.
-  Replace carbon filters every 3-6 months in high VOC environments.'),
-
-('air_quality', 'context', 'Almaty Kazakhstan Air Quality Context',
- 'Almaty has severe winter air pollution primarily from coal heating, vehicle emissions and geography.
-  Winter PM2.5 levels regularly reach 5-18x WHO guidelines.
-  Key pollutants: PM2.5, PM10, NO2, SO2, CO, H2S.
-  Pollution peaks: November to February, worst in temperature inversions.
-  Comparison: Brisbane (Annerley) typical PM2.5: 5-10 μg/m³ (Good).
-  Almaty winter typical PM2.5: 50-150 μg/m³ (Unhealthy to Very Unhealthy).'),
-
-('soil', 'thresholds', 'Soil Health Guidelines',
- 'Optimal soil conditions for general vegetable gardening:
-  Moisture: 40-60% for most vegetables, 50-70% for leafy greens.
-  pH: 6.0-7.0 optimal for most vegetables. Below 6.0 is acidic, above 7.0 is alkaline.
-  Nitrogen: 20-40 ppm adequate for most crops.
-  Phosphorus: 15-30 ppm adequate for most crops.
-  Potassium: 100-150 ppm adequate for most crops.
-  Temperature: 10-30°C optimal for root activity.'),
-
-('water_quality', 'thresholds', 'Drinking Water Quality Guidelines',
- 'WHO drinking water quality guidelines:
-  pH: 6.5-8.5 acceptable range.
-  Turbidity: Below 1 NTU ideal, below 4 NTU acceptable.
-  Dissolved oxygen: Above 6 mg/L good for aquatic life.
-  TDS: Below 600 ppm acceptable, below 300 ppm ideal.
-  Conductivity: Below 400 μS/cm ideal for drinking water.'),
-
-('noise', 'thresholds', 'Noise Level Guidelines',
- 'WHO noise guidelines for health:
-  Below 30 dB: Very quiet, suitable for sleeping.
-  30-40 dB: Quiet, suitable for bedrooms at night.
-  40-55 dB: Moderate, typical office environment.
-  55-70 dB: Loud, prolonged exposure causes stress.
-  70-85 dB: Very loud, hearing damage risk with prolonged exposure.
-  Above 85 dB: Dangerous, hearing protection required.
-  WHO recommends night noise below 40 dB for sleep.');
+  Replace carbon filters every 3-6 months in high VOC environments.');
