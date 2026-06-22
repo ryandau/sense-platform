@@ -35,7 +35,20 @@ def test_classify_analytical(mock_get):
         '{"route":"analytical","field":"co2_ppm","aggregation":"avg","window_hours":168}')
     out = graph.classify({"question": "average co2 last week"})
     assert out["route"] == "analytical"
-    assert out["plan"] == {"field": "co2_ppm", "aggregation": "avg", "window_hours": 168}
+    assert out["plan"]["field"] == "co2_ppm"
+    assert out["plan"]["aggregation"] == "avg"
+    assert out["plan"]["window_hours"] == 168
+
+
+@patch("app.config.get_anthropic")
+def test_classify_extracts_date_range(mock_get):
+    mock_get.return_value = _anthropic_returning(
+        '{"route":"analytical","field":"temperature","aggregation":"avg",'
+        '"start_date":"2026-03-01","end_date":"2026-03-31","window_hours":null}')
+    out = graph.classify({"question": "average temp in March"})
+    assert out["route"] == "analytical"
+    assert out["plan"]["start_date"] == "2026-03-01"
+    assert out["plan"]["end_date"] == "2026-03-31"
 
 
 @patch("app.config.get_anthropic")
@@ -85,6 +98,20 @@ def test_retrieve_analytical_aggregate(mock_overview):
     assert "AVG((r.data->>%(field)s)::numeric)" in sql
     assert params["field"] == "pm2_5"
     assert "make_interval" in sql  # stated window -> time filter applied
+
+
+@patch("app.ai.graph.retrieval.overview_context", return_value="")
+def test_retrieve_analytical_date_range(mock_overview):
+    conn, cur = _conn_with_row({"value": 24.1, "n": 8000})
+    graph._conn.set(conn)
+    out = graph.retrieve_analytical(
+        {"plan": {"field": "temperature", "aggregation": "avg", "window_hours": None,
+                  "start_date": "2026-03-01", "end_date": "2026-03-31"}, "device_id": "d"})
+    assert out["meta"]["value"] == 24.1
+    assert "2026-03-01 to 2026-03-31" in out["context"]
+    sql = cur.execute.call_args[0][0]
+    assert "%(start)s::date" in sql and "%(end)s::date" in sql
+    assert "make_interval" not in sql  # date range, not a rolling window
 
 
 @patch("app.ai.graph.retrieval.overview_context", return_value="")

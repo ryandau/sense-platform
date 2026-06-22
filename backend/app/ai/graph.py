@@ -14,6 +14,8 @@ in state.
 
 import contextvars
 import json
+import re
+from datetime import date
 from typing import Optional, TypedDict
 
 from langgraph.graph import StateGraph, START, END
@@ -24,6 +26,14 @@ from app.ai import retrieval, tracing
 # The live DB connection for the current /ask. Held in a context var rather than
 # in graph state so that traced node inputs/outputs stay serializable.
 _conn = contextvars.ContextVar("ask_conn")
+
+_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _valid_date(s):
+    """Return s only if it is an ISO date (YYYY-MM-DD), else None — the value
+    comes from the LLM, so it is validated before reaching SQL."""
+    return s if isinstance(s, str) and _DATE_RE.match(s) else None
 
 # Aggregations allowed in the analytical branch. The value is injected into SQL
 # as an identifier, so it MUST come from this fixed set (never from user input).
@@ -50,10 +60,13 @@ _CLASSIFY_PROMPT = (
     "co2_ppm, voc_index, nox_index, temperature, humidity (null if no single field is named)\n"
     "- aggregation: one of avg, min, max, sum, count. Map lowest/coolest/minimum -> min; "
     "highest/peak/warmest/worst/maximum -> max.\n"
-    "- window_hours: the window in hours (24 for a day, 168 for a week, 720 for a month), "
-    "null if unstated\n\n"
-    'Return exactly: {"route": "...", "field": ..., "aggregation": ..., "window_hours": ...}. '
-    "For specific questions set field, aggregation and window_hours to null."
+    "- start_date, end_date: if the question names a specific calendar period (a month like "
+    "'April', a date, a range, 'yesterday', 'last month'), give the inclusive range as ISO "
+    "dates (YYYY-MM-DD) resolved relative to today; otherwise both null.\n"
+    "- window_hours: a rolling window in hours, ONLY for 'last N hours/days/weeks' phrasing "
+    "with no named calendar period; otherwise null\n\n"
+    'Return exactly: {"route": "...", "field": ..., "aggregation": ..., "start_date": ..., '
+    '"end_date": ..., "window_hours": ...}. For specific questions set every other field to null.'
 )
 
 _SYNTHESISE_PROMPT = (
@@ -107,9 +120,10 @@ def classify(state: AskState) -> dict:
     try:
         msg = config.get_anthropic().messages.create(
             model=config.ANSWER_MODEL,
-            max_tokens=150,
+            max_tokens=200,
             system=_CLASSIFY_PROMPT,
-            messages=[{"role": "user", "content": state["question"]}],
+            messages=[{"role": "user",
+                       "content": f"Today is {date.today().isoformat()}.\nQuestion: {state['question']}"}],
         )
         raw = msg.content[0].text if msg.content else "{}"
         data = json.loads(raw[raw.find("{") : raw.rfind("}") + 1])
@@ -125,6 +139,8 @@ def classify(state: AskState) -> dict:
             "aggregation": agg,
             # None means "no stated window" -> aggregate over all readings.
             "window_hours": int(window) if isinstance(window, (int, float)) else None,
+            "start_date": data.get("start_date"),
+            "end_date": data.get("end_date"),
         }}
     return {"route": "specific", "plan": None}
 
@@ -139,10 +155,21 @@ def retrieve_analytical(state: AskState) -> dict:
     field = plan["field"]
     raw = plan.get("window_hours")
     window = None if raw is None else max(1, min(int(raw), _MAX_WINDOW_HOURS))
+    start, end = _valid_date(plan.get("start_date")), _valid_date(plan.get("end_date"))
 
     numeric = r"^-?[0-9]+\.?[0-9]*$"
-    time_sql = "" if window is None else " AND r.recorded_at > NOW() - make_interval(hours => %(window)s)"
-    params = {"device_id": state["device_id"], "field": field, "window": window, "numeric": numeric}
+    params = {"device_id": state["device_id"], "field": field, "window": window,
+              "numeric": numeric, "start": start, "end": end}
+    # Time scope: a named calendar range wins, else a rolling window, else all time.
+    if start and end:
+        time_sql = " AND r.recorded_at >= %(start)s::date AND r.recorded_at < (%(end)s::date + 1)"
+        span = f"{start} to {end}"
+    elif window is not None:
+        time_sql = " AND r.recorded_at > NOW() - make_interval(hours => %(window)s)"
+        span = f"the last {window} hours"
+    else:
+        time_sql = ""
+        span = "all time"
     when = None
 
     with _conn.get().cursor() as cur:
@@ -178,7 +205,6 @@ def retrieve_analytical(state: AskState) -> dict:
             value = round(float(row["value"]), 2) if row["value"] is not None else None
             n = row["n"]
 
-    span = "all time" if window is None else f"the last {window} hours"
     if value is None or not n:
         line = f"No {field or 'matching'} readings over {span}."
         value = None
